@@ -521,6 +521,8 @@ local Feint = Ability.add(1966) -- used for GCD
 local Kick = Ability.add(1766, false, true)
 Kick.cooldown_duration = 15
 Kick.triggers_gcd = false
+local Stealth = Ability.add(1784, true, true)
+local Vanish = Ability.add(11327, true, true)
 ------ Talents
 
 ------ Poisons
@@ -567,9 +569,7 @@ SephuzsSecret.cooldown_duration = 30
 local ArcaneTorrent = Ability.add(129597, true, false) -- Blood Elf
 ArcaneTorrent.cp_cost = -1
 ArcaneTorrent.triggers_gcd = false
--- Potion Effects
-local ProlongedPower = Ability.add(229206, true, true)
-ProlongedPower.triggers_gcd = false
+
 -- Trinket Effects
 
 -- End Abilities
@@ -623,8 +623,15 @@ function InventoryItem:usable(seconds)
 end
 
 -- Inventory Items
+local LightforgedAugmentRune = InventoryItem.add(153023)
+LightforgedAugmentRune.buff = Ability.add(224001, true, true)
+local FlaskOfTheSeventhDemon = InventoryItem.add(127848)
+FlaskOfTheSeventhDemon.buff = Ability.add(188033, true, true)
 local PotionOfProlongedPower = InventoryItem.add(142117)
-
+PotionOfProlongedPower.buff = Ability.add(229206, true, true)
+PotionOfProlongedPower.buff.triggers_gcd = false
+local RepurposedFelFocuser = InventoryItem.add(147707)
+RepurposedFelFocuser.buff = Ability.add(242551, true, true)
 -- End Inventory Items
 
 -- Start Helpful Functions
@@ -687,6 +694,10 @@ end
 
 local function TimeInCombat()
 	return combatStartTime > 0 and var.time - combatStartTime or 0
+end
+
+local function Stealthed()
+	return Stealth:up() or Vanish:up()
 end
 
 local function BloodlustActive()
@@ -776,6 +787,12 @@ local APL = {
 
 APL[SPEC.ASSASSINATION] = function()
 	if TimeInCombat() == 0 then
+		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
+			UseCooldown(RepurposedFelFocuser)
+		end
+		if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 300 then
+			return LightforgedAugmentRune
+		end
 		if Opt.poisons then
 			if WoundPoison:up() then
 				if WoundPoison:remains() < 300 then
@@ -792,9 +809,18 @@ APL[SPEC.ASSASSINATION] = function()
 				return LeechingPoison
 			end
 		end
+		if not Stealthed() then
+			return Stealth
+		end
 		if Opt.pot and PotionOfProlongedPower:usable() then
 			UseCooldown(PotionOfProlongedPower)
 		end
+	end
+	if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not FlaskOfTheSeventhDemon.buff:up() then
+		UseCooldown(RepurposedFelFocuser)
+	end
+	if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 30 then
+		UseCooldown(LightforgedAugmentRune)
 	end
 	if Opt.poisons then
 		if WoundPoison:up() then
@@ -816,19 +842,48 @@ end
 
 APL[SPEC.OUTLAW] = function()
 	if TimeInCombat() == 0 then
+		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
+			UseCooldown(RepurposedFelFocuser)
+		end
+		if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 300 then
+			return LightforgedAugmentRune
+		end
+		if not Stealthed() then
+			return Stealth
+		end
 		if Opt.pot and PotionOfProlongedPower:usable() then
 			UseCooldown(PotionOfProlongedPower)
 		end
+	end
+	if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not FlaskOfTheSeventhDemon.buff:up() then
+		UseCooldown(RepurposedFelFocuser)
+	end
+	if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 30 then
+		UseCooldown(LightforgedAugmentRune)
 	end
 end
 
 APL[SPEC.SUBTLETY] = function()
 	if TimeInCombat() == 0 then
+		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
+			UseCooldown(RepurposedFelFocuser)
+		end
+		if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 300 then
+			return LightforgedAugmentRune
+		end
+		if not Stealthed() then
+			return Stealth
+		end
 		if Opt.pot and PotionOfProlongedPower:usable() then
 			UseCooldown(PotionOfProlongedPower)
 		end
 	end
-
+	if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not FlaskOfTheSeventhDemon.buff:up() then
+		UseCooldown(RepurposedFelFocuser)
+	end
+	if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 30 then
+		UseCooldown(LightforgedAugmentRune)
+	end
 end
 
 APL.Interrupt = function()
