@@ -626,7 +626,8 @@ local Vigor = Ability.add(14983, false, true)
 ------ Procs
 
 -- Tier Bonuses & Legendaries
-
+local MasterAssassinsInitiative = Ability.add(235027, true, true) -- Mantle of the Master Assassin
+MasterAssassinsInitiative.buff_duration = 5
 -- Racials
 local ArcaneTorrent = Ability.add(129597, true, false) -- Blood Elf
 ArcaneTorrent.cp_cost = -1
@@ -742,6 +743,13 @@ local function ComboPointDeficit()
 	return var.cp_max - var.cp
 end
 
+local function ComboPointsMaxSpend()
+	if DeeperStratagem.known then
+		return 6
+	end
+	return 5
+end
+
 local function HasteFactor()
 	return var.haste_factor
 end
@@ -782,6 +790,10 @@ local function TargetIsStunnable()
 	return true
 end
 
+local function PoisonedBleeds()
+	return Rupture:tick_targets_poisoned() + Garrote:tick_targets_poisoned()
+end
+
 -- End Helpful Functions
 
 -- Start Ability Modifications
@@ -793,6 +805,19 @@ end
 function Rupture:duration()
 	return Rupture.buff_duration * ((var.combo_points + 1) / 2)
 end
+
+local function TickTargetsPoisoned(self)
+	local count = 0
+	for target, ends in next, self.tick_targets do
+		if DeadlyPoison.tick_targets[target] or WoundPoison.tick_targets[target] then
+			count = count + 1
+		end
+	end
+	return count
+end
+
+Garrote.tick_targets_poisoned = TickTargetsPoisoned
+Rupture.tick_targets_poisoned = TickTargetsPoisoned
 
 function SephuzsSecret:cooldown()
 	if not self.cooldown_start then
@@ -858,7 +883,7 @@ local APL = {
 APL[SPEC.ASSASSINATION] = function()
 	if TimeInCombat() == 0 then
 		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
-			UseCooldown(RepurposedFelFocuser)
+			return RepurposedFelFocuser
 		end
 		if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 300 then
 			return LightforgedAugmentRune
@@ -908,12 +933,77 @@ APL[SPEC.ASSASSINATION] = function()
 			UseCooldown(LeechingPoison)
 		end
 	end
+	var.energy_regen_combined = var.regen + PoisonedBleeds() * (VenomRush.known and 10 or 7) % 2
+	var.energy_time_to_max_combined = EnergyDeficit() % var.energy_regen_combined
+	local apl
+	apl = APL.ASSASSINATION_CDS()
+	if apl then return apl end
+--[[
+	if Enemies() > 2 then
+		return APL.ASSASSINATION_AOE()
+	end
+	if Stealthed() then
+		return APL.ASSASSINATION_STEALTHED
+	end
+	apl = APL.ASSASSINATION_MAINTAIN()
+	if apl then return apl end
+	if not Exsanguinate.known or Exsanguinate:cooldown() > 2 then
+		apl = APL.ASSASSINATION_FINISH()
+		if apl then return apl end
+	end
+	if ComboPointDeficit() > (Anticipation.known and 2 or 1) or EnergyDeficit() <= 25 + var.energy_regen_combined then
+		apl = APL.ASSASSINATION_BUILD()
+		if apl then return apl end
+	end
+--]]
+end
+
+APL.ASSASSINATION_CDS = function()
+	if Opt.pot and PotionOfProlongedPower:usable() and BloodlustActive() or Target.timeToDie <= 60 or Vendetta:up() and Vanish:ready(5) then
+		return UseCooldown(PotionOfProlongedPower)
+	end
+	if ArcaneTorrent.known and ArcaneTorrent:usable() and Kingsbane:up() and Envenom:down() and EnergyDeficit() >= 15 + var.energy_regen_combined * GCDRemains() * 1.1 then
+		return UseCooldown(ArcaneTorrent)
+	end
+	if MarkedForDeath.known and MarkedForDeath:usable() and Target.timeToDie < ComboPointDeficit() * 1.5 then
+		return UseCooldown(MarkedForDeath)
+	end
+	if Vendetta:usable() and (not Exsanguinate.known or Rupture:ticking()) then
+		return UseCooldown(Vendetta)
+	end
+	if Vanish:usable() and not Stealthed() then
+		if Target.timeToDie <= 6 then
+			return UseCooldown(Vanish)
+		end
+		if Nightstalker.known then
+			if ComboPoints() >= ComboPointsMaxSpend() and MasterAssassinsInitiative:down() then
+				if not Exsanguinate.known and Vendetta:up() then
+					return UseCooldown(Vanish)
+				elseif Exsanguinate.known and Exsanguinate:ready(1) then
+					return UseCooldown(Vanish)
+				end
+			end
+		elseif Subterfuge.known then
+			if ItemEquipped.MantleOfTheMasterAssassin and (Vendetta:up() or Target.timeToDie < 10) and MasterAssassinsInitiative:down() then
+				return UseCooldown(Vanish)
+			elseif not ItemEquipped.MantleOfTheMasterAssassin and Garrote:refreshable() and ((Enemies() <= 3 and ComboPointDeficit() >= 1 + Enemies()) or (Enemies() >= 4 and ComboPointDeficit() >= 4)) then
+				return UseCooldown(Vanish)
+			end
+		elseif ShadowFocus.known and var.energy_time_to_max_combined >= 2 and ComboPointDeficit() >= 4 then
+			return UseCooldown(Vanish)
+		end
+	end
+	if ToxicBlade:usable() and (Target.timeToDie <= 6 or ComboPointDeficit() >= 1 + (MasterAssassinsInitiative:remains() >= 0.2 and 1 or 0) and Rupture:remains() > 8 and Vendetta:cooldown() > 10) then
+		return UseCooldown(ToxicBlade)
+	elseif Kingsbane:usable() and (Target.timeToDie <= 15 or ComboPointDeficit() >= 1 + (MasterAssassinsInitiative:remains() >= 0.2 and 1 or 0) and not Stealthed() and (not ToxicBlade:ready() or (not ToxicBlade.known and Envenom:up()))) then
+		return UseCooldown(Kingsbane)
+	end
 end
 
 APL[SPEC.OUTLAW] = function()
 	if TimeInCombat() == 0 then
 		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
-			UseCooldown(RepurposedFelFocuser)
+			return RepurposedFelFocuser
 		end
 		if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 300 then
 			return LightforgedAugmentRune
@@ -936,7 +1026,7 @@ end
 APL[SPEC.SUBTLETY] = function()
 	if TimeInCombat() == 0 then
 		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
-			UseCooldown(RepurposedFelFocuser)
+			return RepurposedFelFocuser
 		end
 		if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 300 then
 			return LightforgedAugmentRune
