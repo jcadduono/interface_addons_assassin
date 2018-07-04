@@ -546,9 +546,71 @@ WoundPoison.dot.buff_duration = 12
 local SephuzsSecret = Ability.add(208052, true, true)
 SephuzsSecret.cooldown_duration = 30
 ---- Assassination
-
+local Envenom = Ability.add(32645, true, true)
+Envenom.buff_duration = 8
+Envenom.energy_cost = 25
+Envenom.cp_cost = 1
+local FanOfKnives = Ability.add(51723, false, true)
+FanOfKnives.energy_cost = 35
+FanOfKnives.cp_cost = -1
+FanOfKnives:setAutoAoe(true)
+local Garrote = Ability.add(703, false, true)
+Garrote.buff_duration = 18
+Garrote.cooldown_duration = 15
+Garrote.energy_cost = 45
+Garrote.cp_cost = -1
+local Kingsbane = Ability.add(192759, false, true)
+Kingsbane.buff_duration = 14
+Kingsbane.cooldown_duration = 45
+Kingsbane.energy_cost = 35
+Kingsbane.cp_cost = -1
+local Mutilate = Ability.add(1329, false, true)
+Mutilate.energy_cost = 55
+Mutilate.cp_cost = -2
+local Rupture = Ability.add(1943, false, true)
+Rupture.buff_duration = 8
+Rupture.energy_cost = 25
+Rupture.cp_cost = 1
+local SurgeOfToxins = Ability.add(192425, false, true)
+SurgeOfToxins.buff_duration = 5
+local Vendetta = Ability.add(79140, false, true)
+Vendetta.buff_duration = 20
+Vendetta.energy_cost = -60
+Vendetta.cooldown_duration = 120
+Vendetta.triggers_gcd = false
+local VirulentPoisons = Ability.add(252277, true, true)
+VirulentPoisons.buff_duration = 6
 ------ Talents
-
+local Anticipation = Ability.add(114015, false, true)
+local DeathFromAbove = Ability.add(152150, false, true)
+DeathFromAbove.cooldown_duration = 20
+DeathFromAbove.energy_cost = 25
+DeathFromAbove.cp_cost = 1
+local DeeperStratagem = Ability.add(193531, false, true)
+local ElaboratePlanning = Ability.add(193640, false, true, 193641)
+ElaboratePlanning.buff_duration = 5
+local Exsanguinate = Ability.add(200806, false, true)
+Exsanguinate.cooldown_duration = 45
+Exsanguinate.energy_cost = 25
+local Hemorrhage = Ability.add(16511, false, true)
+Hemorrhage.buff_duration = 20
+Hemorrhage.energy_cost = 30
+Hemorrhage.cp_cost = -1
+local MarkedForDeath = Ability.add(137619, false, true)
+MarkedForDeath.cooldown_duration = 60
+MarkedForDeath.cp_cost = -5
+MarkedForDeath.triggers_gcd = false
+MarkedForDeath:setAutoAoe(true)
+local MasterPoisoner = Ability.add(196864, false, true)
+local Nightstalker = Ability.add(14062, false, true)
+local ShadowFocus = Ability.add(108209, false, true)
+local Subterfuge = Ability.add(108208, true, true, 115192)
+local ToxicBlade = Ability.add(245388, false, true, 245389)
+ToxicBlade.buff_duration = 9
+ToxicBlade.cooldown_duration = 25
+ToxicBlade.energy_cost = 20
+ToxicBlade.cp_cost = -1
+local Vigor = Ability.add(14983, false, true)
 ------ Procs
 
 ---- Outlaw
@@ -723,6 +785,14 @@ end
 -- End Helpful Functions
 
 -- Start Ability Modifications
+
+function Envenom:duration()
+	return Envenom.buff_duration + var.combo_points - 1
+end
+
+function Rupture:duration()
+	return Rupture.buff_duration * ((var.combo_points + 1) / 2)
+end
 
 function SephuzsSecret:cooldown()
 	if not self.cooldown_start then
