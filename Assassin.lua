@@ -522,7 +522,7 @@ local Kick = Ability.add(1766, false, true)
 Kick.cooldown_duration = 15
 Kick.triggers_gcd = false
 local Stealth = Ability.add(1784, true, true)
-local Vanish = Ability.add(11327, true, true)
+local Vanish = Ability.add(1856, true, true, 11327)
 ------ Talents
 
 ------ Poisons
@@ -610,6 +610,7 @@ ToxicBlade.buff_duration = 9
 ToxicBlade.cooldown_duration = 25
 ToxicBlade.energy_cost = 20
 ToxicBlade.cp_cost = -1
+local VenomRush = Ability.add(152152, false, true)
 local Vigor = Ability.add(14983, false, true)
 ------ Procs
 
@@ -639,7 +640,7 @@ ArcaneTorrent.triggers_gcd = false
 
 -- Start Inventory Items
 
-local InventoryItem = {}
+local InventoryItem, inventoryItems = {}, {}
 InventoryItem.__index = InventoryItem
 
 function InventoryItem.add(itemId)
@@ -650,6 +651,7 @@ function InventoryItem.add(itemId)
 		icon = icon
 	}
 	setmetatable(item, InventoryItem)
+	inventoryItems[#inventoryItems + 1] = item
 	return item
 end
 
@@ -806,7 +808,15 @@ function Rupture:duration()
 	return Rupture.buff_duration * ((var.combo_points + 1) / 2)
 end
 
+function Vanish:usable()
+	if not UnitInParty('player') then
+		return false
+	end
+	return Ability.usable(self)
+end
+
 local function TickTargetsPoisoned(self)
+--[[
 	local count = 0
 	for target, ends in next, self.tick_targets do
 		if DeadlyPoison.tick_targets[target] or WoundPoison.tick_targets[target] then
@@ -814,6 +824,8 @@ local function TickTargetsPoisoned(self)
 		end
 	end
 	return count
+]]
+	return self:up() and (DeadlyPoison:up() or WoundPoison:up()) and 1 or 0
 end
 
 Garrote.tick_targets_poisoned = TickTargetsPoisoned
@@ -933,11 +945,13 @@ APL[SPEC.ASSASSINATION] = function()
 			UseCooldown(LeechingPoison)
 		end
 	end
-	var.energy_regen_combined = var.regen + PoisonedBleeds() * (VenomRush.known and 10 or 7) % 2
+	var.energy_regen_combined = var.energy_regen + PoisonedBleeds() * (VenomRush.known and 10 or 7) % 2
 	var.energy_time_to_max_combined = EnergyDeficit() % var.energy_regen_combined
 	local apl
-	apl = APL.ASSASSINATION_CDS()
-	if apl then return apl end
+	if TimeInCombat() > 0 then
+		apl = APL.ASSASSINATION_CDS()
+		if apl then return apl end
+	end
 --[[
 	if Enemies() > 2 then
 		return APL.ASSASSINATION_AOE()
@@ -959,7 +973,7 @@ APL[SPEC.ASSASSINATION] = function()
 end
 
 APL.ASSASSINATION_CDS = function()
-	if Opt.pot and PotionOfProlongedPower:usable() and BloodlustActive() or Target.timeToDie <= 60 or Vendetta:up() and Vanish:ready(5) then
+	if Opt.pot and PotionOfProlongedPower:usable() and (BloodlustActive() or Target.timeToDie <= 60 or Vendetta:up() and Vanish:ready(5)) then
 		return UseCooldown(PotionOfProlongedPower)
 	end
 	if ArcaneTorrent.known and ArcaneTorrent:usable() and Kingsbane:up() and Envenom:down() and EnergyDeficit() >= 15 + var.energy_regen_combined * GCDRemains() * 1.1 then
@@ -1604,10 +1618,13 @@ end
 
 function events:PLAYER_SPECIALIZATION_CHANGED(unitName)
 	if unitName == 'player' then
-		local i
+		local _, i
 		for i = 1, #abilities do
 			abilities[i].name, _, abilities[i].icon = GetSpellInfo(abilities[i].spellId)
 			abilities[i].known = IsPlayerSpell(abilities[i].spellId) or (abilities[i].spellId2 and IsPlayerSpell(abilities[i].spellId2))
+		end
+		for i = 1, #inventoryItems do
+			inventoryItems[i].name, _, _, _, _, _, _, _, _, inventoryItems[i].icon = GetItemInfo(inventoryItems[i].itemId)
 		end
 		assassinPreviousPanel.ability = nil
 		PreviousGCD = {}
