@@ -514,6 +514,49 @@ function Ability:updateTargetsHit()
 	end
 end
 
+-- start DoT tracking
+
+local trackAuras = {
+	abilities = {}
+}
+
+function trackAuras:purge()
+	local now = GetTime()
+	local _, ability, guid, expires
+	for _, ability in next, self.abilities do
+		for guid, expires in next, ability.aura_targets do
+			if combatStartTime == 0 or expires <= now then
+				ability:removeAura(guid)
+			end
+		end
+	end
+end
+
+function Ability:trackAuras()
+	self.aura_targets = {}
+	trackAuras.abilities[self.spellId] = self
+	if self.spellId2 then
+		trackAuras.abilities[self.spellId2] = self
+	end
+end
+
+function Ability:applyAura(guid)
+	if self.aura_targets and UnitGUID(self.auraTarget) == guid then -- for now, we can only track if the enemy is targeted
+		local _, _, _, _, _, _, expires = UnitAura(self.auraTarget, self.name, nil, self.auraFilter)
+		if expires then
+			self.aura_targets[guid] = expires
+		end
+	end
+end
+
+function Ability:removeAura(guid)
+	if self.aura_targets then
+		self.aura_targets[guid] = nil
+	end
+end
+
+-- end DoT tracking
+
 -- Rogue Abilities
 ---- Multiple Specializations
 
@@ -535,12 +578,14 @@ DeadlyPoison.triggers_gcd = false
 DeadlyPoison.dot = Ability.add(2818, false, true)
 DeadlyPoison.dot.buff_duration = 12
 DeadlyPoison.dot.tick_interval = 3
+DeadlyPoison.dot:trackAuras()
 local LeechingPoison = Ability.add(108211, true, true)
 LeechingPoison.triggers_gcd = false
 local WoundPoison = Ability.add(8679, true, true)
 WoundPoison.triggers_gcd = false
 WoundPoison.dot = Ability.add(8680, false, true)
 WoundPoison.dot.buff_duration = 12
+WoundPoison.dot:trackAuras()
 
 ------ Procs
 local SephuzsSecret = Ability.add(208052, true, true)
@@ -559,6 +604,7 @@ Garrote.buff_duration = 18
 Garrote.cooldown_duration = 15
 Garrote.energy_cost = 45
 Garrote.cp_cost = -1
+Garrote:trackAuras()
 local Kingsbane = Ability.add(192759, false, true)
 Kingsbane.buff_duration = 14
 Kingsbane.cooldown_duration = 45
@@ -571,6 +617,7 @@ local Rupture = Ability.add(1943, false, true)
 Rupture.buff_duration = 8
 Rupture.energy_cost = 25
 Rupture.cp_cost = 1
+Rupture:trackAuras()
 local SurgeOfToxins = Ability.add(192425, false, true)
 SurgeOfToxins.buff_duration = 5
 local Vendetta = Ability.add(79140, false, true)
@@ -792,10 +839,6 @@ local function TargetIsStunnable()
 	return true
 end
 
-local function PoisonedBleeds()
-	return Rupture:tick_targets_poisoned() + Garrote:tick_targets_poisoned()
-end
-
 -- End Helpful Functions
 
 -- Start Ability Modifications
@@ -815,21 +858,18 @@ function Vanish:usable()
 	return Ability.usable(self)
 end
 
-local function TickTargetsPoisoned(self)
---[[
-	local count = 0
-	for target, ends in next, self.tick_targets do
-		if DeadlyPoison.tick_targets[target] or WoundPoison.tick_targets[target] then
+local function PoisonedTicking(self)
+	local count, guid = 0
+	for guid in next, self.aura_targets do
+		if DeadlyPoison.dot.aura_targets[guid] or WoundPoison.dot.aura_targets[guid] then
 			count = count + 1
 		end
 	end
 	return count
-]]
-	return self:up() and (DeadlyPoison:up() or WoundPoison:up()) and 1 or 0
 end
 
-Garrote.tick_targets_poisoned = TickTargetsPoisoned
-Rupture.tick_targets_poisoned = TickTargetsPoisoned
+Garrote.poisonedTicking = PoisonedTicking
+Rupture.poisonedTicking = PoisonedTicking
 
 function SephuzsSecret:cooldown()
 	if not self.cooldown_start then
@@ -945,7 +985,7 @@ APL[SPEC.ASSASSINATION] = function()
 			UseCooldown(LeechingPoison)
 		end
 	end
-	var.energy_regen_combined = var.energy_regen + PoisonedBleeds() * (VenomRush.known and 10 or 7) % 2
+	var.energy_regen_combined = var.energy_regen + (Garrote:poisonedTicking() + Rupture:poisonedTicking()) * (VenomRush.known and 10 or 7) % 2
 	var.energy_time_to_max_combined = EnergyDeficit() % var.energy_regen_combined
 	local apl
 	if TimeInCombat() > 0 then
@@ -1521,17 +1561,17 @@ function events:COMBAT_LOG_EVENT_UNFILTERED(timeStamp, eventType, hideCaster, sr
 		end
 		return
 	end
---[[
-	if eventType == 'SPELL_PERIODIC_DAMAGE' then
-		if spellId == DeadlyPoison.dot.spellId then
-			print(format('DP tick at now = %.2f', GetTime()))
-		end
-	end
-]]
 	if eventType == 'SPELL_AURA_APPLIED' then
 		if spellId == SephuzsSecret.spellId then
 			SephuzsSecret.cooldown_start = GetTime()
 			return
+		end
+	end
+	if trackAuras.abilities[spellId] then
+		if eventType == 'SPELL_AURA_APPLIED' or eventType == 'SPELL_AURA_REFRESH' then
+			trackAuras.abilities[spellId]:applyAura(dstGUID)
+		elseif eventType == 'SPELL_AURA_REMOVED' or eventType == 'UNIT_DIED' or eventType == 'UNIT_DESTROYED' or eventType == 'UNIT_DISSIPATES' or eventType == 'SPELL_INSTAKILL' or eventType == 'PARTY_KILL' then
+			trackAuras.abilities[spellId]:removeAura(dstGUID)
 		end
 	end
 end
@@ -1596,6 +1636,7 @@ end
 
 function events:PLAYER_REGEN_ENABLED()
 	combatStartTime = 0
+	trackAuras:purge()
 	if Opt.auto_aoe then
 		local guid
 		for guid in next, autoAoe.targets do
@@ -1660,6 +1701,7 @@ end)
 assassinPanel:SetScript('OnUpdate', function(self, elapsed)
 	abilityTimer = abilityTimer + elapsed
 	if abilityTimer >= Opt.frequency then
+		trackAuras:purge()
 		if Opt.auto_aoe then
 			local _, ability
 			for _, ability in next, autoAoe.abilities do
