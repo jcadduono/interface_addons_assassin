@@ -471,6 +471,10 @@ function Ability:castTime()
 	return castTime / 1000
 end
 
+function Ability:tickTime()
+	return self.tick_interval
+end
+
 function Ability:previous()
 	if self:channeling() then
 		return true
@@ -615,6 +619,7 @@ FanOfKnives:setAutoAoe(true)
 local Garrote = Ability.add(703, false, true)
 Garrote.buff_duration = 18
 Garrote.cooldown_duration = 15
+Garrote.tick_interval = 3
 Garrote.energy_cost = 45
 Garrote.cp_cost = -1
 Garrote:trackAuras()
@@ -629,6 +634,7 @@ Mutilate.cp_cost = -2
 local Rupture = Ability.add(1943, false, true)
 Rupture.buff_duration = 8
 Rupture.energy_cost = 25
+Rupture.tick_interval = 3
 Rupture.cp_cost = 1
 Rupture:trackAuras()
 local SurgeOfToxins = Ability.add(192425, false, true)
@@ -853,11 +859,11 @@ end
 -- Start Ability Modifications
 
 function Envenom:duration()
-	return Envenom.buff_duration + var.combo_points - 1
+	return Envenom.buff_duration + var.cp - 1
 end
 
 function Rupture:duration()
-	return Rupture.buff_duration * ((var.combo_points + 1) / 2)
+	return Rupture.buff_duration * ((var.cp + 1) / 2)
 end
 
 function Vanish:usable()
@@ -951,7 +957,7 @@ local APL = {
 	[SPEC.SUBTLETY] = {}
 }
 
-APL[SPEC.ASSASSINATION].main = function()
+APL[SPEC.ASSASSINATION].main = function(self)
 	if TimeInCombat() == 0 then
 		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
 			return RepurposedFelFocuser
@@ -1027,10 +1033,9 @@ APL[SPEC.ASSASSINATION].main = function()
 		apl = self:build()
 		if apl then return apl end
 	end
---]]
 end
 
-APL[SPEC.ASSASSINATION].aoe = function()
+APL[SPEC.ASSASSINATION].aoe = function(self)
 --[[
 actions.aoe=envenom,if=!buff.envenom.up&combo_points>=cp_max_spend
 actions.aoe+=/rupture,cycle_targets=1,if=combo_points>=cp_max_spend&refreshable&(pmultiplier<=1|remains<=tick_time)&(!exsanguinated|remains<=tick_time*2)&target.time_to_die-remains>4
@@ -1053,7 +1058,7 @@ actions.aoe+=/fan_of_knives
 	return FanOfKnives
 end
 
-APL[SPEC.ASSASSINATION].build = function()
+APL[SPEC.ASSASSINATION].build = function(self)
 --[[
 actions.build=hemorrhage,if=refreshable
 actions.build+=/hemorrhage,cycle_targets=1,if=refreshable&dot.rupture.ticking&spell_targets.fan_of_knives<2+equipped.insignia_of_ravenholdt
@@ -1067,7 +1072,7 @@ actions.build+=/mutilate
 ]]
 end
 
-APL[SPEC.ASSASSINATION].cds = function()
+APL[SPEC.ASSASSINATION].cds = function(self)
 	if Opt.pot and PotionOfProlongedPower:usable() and (BloodlustActive() or Target.timeToDie <= 60 or Vendetta:up() and Vanish:ready(5)) then
 		return UseCooldown(PotionOfProlongedPower)
 	end
@@ -1109,7 +1114,7 @@ APL[SPEC.ASSASSINATION].cds = function()
 	end
 end
 
-APL[SPEC.ASSASSINATION].finish = function()
+APL[SPEC.ASSASSINATION].finish = function(self)
 --[[
 actions.finish=death_from_above,if=combo_points>=5
 actions.finish+=/envenom,if=talent.anticipation.enabled&combo_points>=5&((debuff.toxic_blade.up&buff.virulent_poisons.remains<2)|mantle_duration>=0.2|buff.virulent_poisons.remains<0.2|energy.deficit<=25+variable.energy_regen_combined)
@@ -1119,7 +1124,7 @@ actions.finish+=/envenom,if=talent.elaborate_planning.enabled&combo_points>=3+!t
 ]]
 end
 
-APL[SPEC.ASSASSINATION].maintain = function()
+APL[SPEC.ASSASSINATION].maintain = function(self)
 --[[
 actions.maintain=rupture,if=talent.exsanguinate.enabled&((combo_points>=cp_max_spend&cooldown.exsanguinate.remains<1)|(!ticking&(time>10|combo_points>=2+artifact.urge_to_kill.enabled)))
 actions.maintain+=/rupture,cycle_targets=1,if=combo_points>=4&refreshable&(pmultiplier<=1|remains<=tick_time)&(!exsanguinated|remains<=tick_time*2)&target.time_to_die-remains>6
@@ -1131,7 +1136,7 @@ actions.maintain+=/rupture,if=!talent.exsanguinate.enabled&combo_points>=3&!tick
 ]]
 end
 
-APL[SPEC.ASSASSINATION].stealthed = function()
+APL[SPEC.ASSASSINATION].stealthed = function(self)
 --[[
 actions.stealthed=mutilate,if=talent.shadow_focus.enabled&dot.garrote.ticking
 actions.stealthed+=/garrote,cycle_targets=1,if=talent.subterfuge.enabled&combo_points.deficit>=1&set_bonus.tier20_4pc&((dot.garrote.remains<=13&!debuff.toxic_blade.up)|pmultiplier<=1)&!exsanguinated
@@ -1163,10 +1168,12 @@ actions.stealthed+=/mutilate
 	if not Subterfuge.known and Garrote:usable() and Target.timeToDie - Garrote:remains() > 4 then
 		return Garrote
 	end
-	return Mutilate
+	if Mutilate:usable() then
+		return Mutilate
+	end
 end
 
-APL[SPEC.OUTLAW].main = function()
+APL[SPEC.OUTLAW].main = function(self)
 	if TimeInCombat() == 0 then
 		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
 			return RepurposedFelFocuser
@@ -1189,7 +1196,7 @@ APL[SPEC.OUTLAW].main = function()
 	end
 end
 
-APL[SPEC.SUBTLETY].main = function()
+APL[SPEC.SUBTLETY].main = function(self)
 	if TimeInCombat() == 0 then
 		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
 			return RepurposedFelFocuser
@@ -1212,7 +1219,7 @@ APL[SPEC.SUBTLETY].main = function()
 	end
 end
 
-APL.Interrupt = function()
+APL.Interrupt = function(self)
 	if Kick.known and Kick:usable() then
 		return Kick
 	end
@@ -1537,7 +1544,7 @@ end
 local function UpdateCombat()
 	abilityTimer = 0
 	UpdateVars()
-	var.main = APL[currentSpec].main()
+	var.main = APL[currentSpec]:main()
 	if var.main ~= var.last_main then
 		if var.main then
 			assassinPanel.icon:SetTexture(var.main.icon)
