@@ -2,19 +2,19 @@
 	<Binding name="Toggle Targets +" header="ASSASSIN" category="ADDONS">
 		Assassin_ToggleTargetMode()
 	</Binding>
-	<Binding name="Toggle Targets -" header="ASSASSIN" category="ADDONS">
+	<Binding name="Toggle Targets -">
 		Assassin_ToggleTargetModeReverse()
 	</Binding>
-	<Binding name="Set Targets to 1" header="ASSASSIN" category="ADDONS">
+	<Binding name="Set Targets to 1">
 		Assassin_SetTargetMode(1)
 	</Binding>
-	<Binding name="Set Targets to 2" header="ASSASSIN" category="ADDONS">
+	<Binding name="Set Targets to 2">
 		Assassin_SetTargetMode(2)
 	</Binding>
-	<Binding name="Set Targets to 3" header="ASSASSIN" category="ADDONS">
+	<Binding name="Set Targets to 3">
 		Assassin_SetTargetMode(3)
 	</Binding>
-	<Binding name="Set Targets to 4+" header="ASSASSIN" category="ADDONS">
+	<Binding name="Set Targets to 4+">
 		Assassin_SetTargetMode(4)
 	</Binding>
 </Bindings>

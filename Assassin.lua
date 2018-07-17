@@ -301,17 +301,17 @@ function Ability.add(spellId, buff, player, spellId2)
 		name = false,
 		icon = false,
 		requires_charge = false,
-		usable_moving = true,
 		triggers_gcd = true,
 		hasted_duration = false,
 		hasted_cooldown = false,
+		hasted_ticks = false,
 		known = false,
 		energy_cost = 0,
 		cp_cost = 0,
 		cooldown_duration = 0,
 		buff_duration = 0,
 		tick_interval = 0,
-		auraTarget = buff == 'pet' and 'pet' or buff and 'player' or 'target',
+		auraTarget = buff and 'player' or 'target',
 		auraFilter = (buff and 'HELPFUL' or 'HARMFUL') .. (player and '|PLAYER' or '')
 	}
 	setmetatable(ability, Ability)
@@ -325,6 +325,9 @@ function Ability:ready(seconds)
 end
 
 function Ability:usable(seconds)
+	if not self.known then
+		return false
+	end
 	if self:energyCost() > var.energy then
 		return false
 	end
@@ -332,9 +335,6 @@ function Ability:usable(seconds)
 		return false
 	end
 	if self.requires_charge and self:charges() == 0 then
-		return false
-	end
-	if not self.usable_moving and GetUnitSpeed('player') ~= 0 then
 		return false
 	end
 	return self:ready(seconds)
@@ -346,7 +346,7 @@ function Ability:remains()
 	end
 	local _, i, id, expires
 	for i = 1, 40 do
-		_, _, _, _, _, _, expires, _, _, _, id = UnitAura(self.auraTarget, i, self.auraFilter)
+		_, _, _, _, _, expires, _, _, _, id = UnitAura(self.auraTarget, i, self.auraFilter)
 		if not id then
 			return 0
 		end
@@ -370,7 +370,7 @@ end
 function Ability:up()
 	local _, i, id, expires
 	for i = 1, 40 do
-		_, _, _, _, _, _, expires, _, _, _, id = UnitAura(self.auraTarget, i, self.auraFilter)
+		_, _, _, _, _, expires, _, _, _, id = UnitAura(self.auraTarget, i, self.auraFilter)
 		if not id then
 			return false
 		end
@@ -415,7 +415,7 @@ end
 function Ability:stack()
 	local _, i, id, expires, count
 	for i = 1, 40 do
-		_, _, _, count, _, _, expires, _, _, _, id = UnitAura(self.auraTarget, i, self.auraFilter)
+		_, _, count, _, _, expires, _, _, _, id = UnitAura(self.auraTarget, i, self.auraFilter)
 		if not id then
 			return 0
 		end
@@ -427,7 +427,7 @@ function Ability:stack()
 end
 
 function Ability:energyCost()
-	return self.energy_cost > 0 and (self.energy_cost / 100 * var.energy_max) or 0
+	return self.energy_cost
 end
 
 function Ability:cpCost()
@@ -472,7 +472,7 @@ function Ability:castTime()
 end
 
 function Ability:tickTime()
-	return self.tick_interval
+	return self.hasted_ticks and (var.haste_factor * self.tick_interval) or self.tick_interval
 end
 
 function Ability:previous()
@@ -561,7 +561,7 @@ function Ability:applyAura(guid)
 	if self.aura_targets and UnitGUID(self.auraTarget) == guid then -- for now, we can only track if the enemy is targeted
 		local _, i, id, expires
 		for i = 1, 40 do
-			_, _, _, _, _, _, expires, _, _, _, id = UnitAura(self.auraTarget, i, self.auraFilter)
+			_, _, _, _, _, expires, _, _, _, id = UnitAura(self.auraTarget, i, self.auraFilter)
 			if not id then
 				return
 			end
@@ -583,40 +583,30 @@ end
 
 -- Rogue Abilities
 ---- Multiple Specializations
-
-local Feint = Ability.add(1966) -- used for GCD
 local Kick = Ability.add(1766, false, true)
 Kick.cooldown_duration = 15
 Kick.triggers_gcd = false
-local Stealth = Ability.add(1784, true, true)
+local Stealth = Ability.add(1784, true, true, 115191)
 local Vanish = Ability.add(1856, true, true, 11327)
------- Talents
-
------- Poisons
-local CripplingPoison = Ability.add(3408, true, true)
-CripplingPoison.triggers_gcd = false
-CripplingPoison.dot = Ability.add(3409, false, true)
-CripplingPoison.dot.buff_duration = 12
-local DeadlyPoison = Ability.add(2823, true, true)
-DeadlyPoison.triggers_gcd = false
-DeadlyPoison.dot = Ability.add(2818, false, true)
-DeadlyPoison.dot.buff_duration = 12
-DeadlyPoison.dot.tick_interval = 3
-DeadlyPoison.dot:trackAuras()
-local LeechingPoison = Ability.add(108211, true, true)
-LeechingPoison.triggers_gcd = false
-local WoundPoison = Ability.add(8679, true, true)
-WoundPoison.triggers_gcd = false
-WoundPoison.dot = Ability.add(8680, false, true)
-WoundPoison.dot.buff_duration = 12
-WoundPoison.dot:trackAuras()
-
 ------ Procs
 local SephuzsSecret = Ability.add(208052, true, true)
 SephuzsSecret.cooldown_duration = 30
+------ Talents
+local Alacrity = Ability.add(193539, true, true)
+Alacrity.buff_duration = 20
+local Anticipation = Ability.add(114015, false, true)
+local DeeperStratagem = Ability.add(193531, false, true)
+local MarkedForDeath = Ability.add(137619, false, true)
+MarkedForDeath.cooldown_duration = 60
+MarkedForDeath.cp_cost = -5
+MarkedForDeath.triggers_gcd = false
+local Nightstalker = Ability.add(14062, false, true)
+local ShadowFocus = Ability.add(108209, false, true)
+local Subterfuge = Ability.add(108208, true, true, 115192)
+local Vigor = Ability.add(14983, false, true)
 ---- Assassination
 local Envenom = Ability.add(32645, true, true)
-Envenom.buff_duration = 8
+Envenom.buff_duration = 1
 Envenom.energy_cost = 25
 Envenom.cp_cost = 1
 local FanOfKnives = Ability.add(51723, false, true)
@@ -626,23 +616,20 @@ FanOfKnives:setAutoAoe(true)
 local Garrote = Ability.add(703, false, true)
 Garrote.buff_duration = 18
 Garrote.cooldown_duration = 15
-Garrote.tick_interval = 3
 Garrote.energy_cost = 45
 Garrote.cp_cost = -1
+Garrote.tick_interval = 2
+Garrote.hasted_ticks = true
 Garrote:trackAuras()
-local Kingsbane = Ability.add(192759, false, true)
-Kingsbane.buff_duration = 14
-Kingsbane.cooldown_duration = 45
-Kingsbane.energy_cost = 35
-Kingsbane.cp_cost = -1
 local Mutilate = Ability.add(1329, false, true)
 Mutilate.energy_cost = 55
 Mutilate.cp_cost = -2
 local Rupture = Ability.add(1943, false, true)
-Rupture.buff_duration = 8
+Rupture.buff_duration = 4
 Rupture.energy_cost = 25
-Rupture.tick_interval = 3
 Rupture.cp_cost = 1
+Rupture.tick_interval = 2
+Rupture.hasted_ticks = true
 Rupture:trackAuras()
 local SurgeOfToxins = Ability.add(192425, false, true)
 SurgeOfToxins.buff_duration = 5
@@ -653,13 +640,29 @@ Vendetta.cooldown_duration = 120
 Vendetta.triggers_gcd = false
 local VirulentPoisons = Ability.add(252277, true, true)
 VirulentPoisons.buff_duration = 6
+------ Poisons
+local CripplingPoison = Ability.add(3408, true, true)
+CripplingPoison.triggers_gcd = false
+CripplingPoison.dot = Ability.add(3409, false, true)
+CripplingPoison.dot.buff_duration = 12
+local DeadlyPoison = Ability.add(2823, true, true)
+DeadlyPoison.triggers_gcd = false
+DeadlyPoison.dot = Ability.add(2818, false, true)
+DeadlyPoison.dot.buff_duration = 12
+DeadlyPoison.dot.tick_interval = 2
+DeadlyPoison.dot.hasted_ticks = true
+DeadlyPoison.dot:trackAuras()
+local WoundPoison = Ability.add(8679, true, true)
+WoundPoison.triggers_gcd = false
+WoundPoison.dot = Ability.add(8680, false, true)
+WoundPoison.dot.buff_duration = 12
+WoundPoison.dot:trackAuras()
 ------ Talents
-local Anticipation = Ability.add(114015, false, true)
 local DeathFromAbove = Ability.add(152150, false, true)
 DeathFromAbove.cooldown_duration = 20
 DeathFromAbove.energy_cost = 25
 DeathFromAbove.cp_cost = 1
-local DeeperStratagem = Ability.add(193531, false, true)
+DeathFromAbove:setAutoAoe(true)
 local ElaboratePlanning = Ability.add(193640, false, true, 193641)
 ElaboratePlanning.buff_duration = 5
 local Exsanguinate = Ability.add(200806, false, true)
@@ -669,22 +672,13 @@ local Hemorrhage = Ability.add(16511, false, true)
 Hemorrhage.buff_duration = 20
 Hemorrhage.energy_cost = 30
 Hemorrhage.cp_cost = -1
-local MarkedForDeath = Ability.add(137619, false, true)
-MarkedForDeath.cooldown_duration = 60
-MarkedForDeath.cp_cost = -5
-MarkedForDeath.triggers_gcd = false
-MarkedForDeath:setAutoAoe(true)
 local MasterPoisoner = Ability.add(196864, false, true)
-local Nightstalker = Ability.add(14062, false, true)
-local ShadowFocus = Ability.add(108209, false, true)
-local Subterfuge = Ability.add(108208, true, true, 115192)
 local ToxicBlade = Ability.add(245388, false, true, 245389)
 ToxicBlade.buff_duration = 9
 ToxicBlade.cooldown_duration = 25
 ToxicBlade.energy_cost = 20
 ToxicBlade.cp_cost = -1
 local VenomRush = Ability.add(152152, false, true)
-local Vigor = Ability.add(14983, false, true)
 ------ Procs
 
 ---- Outlaw
@@ -694,17 +688,62 @@ local Vigor = Ability.add(14983, false, true)
 ------ Procs
 
 ---- Subtlety
-
+local Backstab = Ability.add(53, false, true)
+Backstab.energy_cost = 35
+Backstab.cp_cost = -1
+local Eviscerate = Ability.add(196819, false, true)
+Eviscerate.energy_cost = 35
+Eviscerate.cp_cost = 1
+local Nightblade = Ability.add(195452, false, true)
+Nightblade.energy_cost = 25
+Nightblade.cp_cost = 1
+Nightblade.buff_duration = 6
+Nightblade.tick_interval = 2
+Nightblade.hasted_ticks = true
+Nightblade:trackAuras()
+local ShadowBlades = Ability.add(121471, true, true)
+ShadowBlades.buff_duration = 20
+ShadowBlades.cooldown_duration = 180
+local ShadowDance = Ability.add(185313, true, true, 185422)
+ShadowDance.buff_duration = 5
+ShadowDance.cooldown_duration = 60
+ShadowDance.requires_charge = true
+ShadowDance.triggers_gcd = false
+local Shadowstrike = Ability.add(185438, false, true)
+Shadowstrike.energy_cost = 40
+Shadowstrike.cp_cost = -2
+local ShurikenStorm = Ability.add(197835, false, true)
+ShurikenStorm.energy_cost = 35
+ShurikenStorm.cp_cost = -2
+local SymbolsOfDeath = Ability.add(212283, true, true)
+SymbolsOfDeath.buff_duration = 10
+SymbolsOfDeath.cooldown_duration = 30
 ------ Talents
-
+local Gloomblade = Ability.add(200758, false, true)
+Gloomblade.energy_cost = 35
+Gloomblade.cp_cost = -1
+local DarkShadow = Ability.add(245687, false, true)
+local FindWeakness = Ability.add(91023, false, true, 91021)
+FindWeakness.buff_duration = 10
+local MasterOfShadows = Ability.add(196976, false, true)
+local SecretTechnique = Ability.add(280719, true, true)
+SecretTechnique.energy_cost = 30
+SecretTechnique.cp_cost = 1
+SecretTechnique:setAutoAoe(true)
+local ShurikenTornado = Ability.add(277925, true, true)
+ShurikenTornado.energy_cost = 60
+ShurikenTornado.buff_duration = 4
+ShurikenTornado.cooldown_duration = 60
+ShurikenTornado.tick_interval = 1
+ShurikenTornado:setAutoAoe(true)
 ------ Procs
 
 -- Tier Bonuses & Legendaries
 local MasterAssassinsInitiative = Ability.add(235027, true, true) -- Mantle of the Master Assassin
 MasterAssassinsInitiative.buff_duration = 5
 -- Racials
-local ArcaneTorrent = Ability.add(129597, true, false) -- Blood Elf
-ArcaneTorrent.cp_cost = -1
+local ArcaneTorrent = Ability.add(25046, true, false) -- Blood Elf
+ArcaneTorrent.energy_cost = -15
 ArcaneTorrent.triggers_gcd = false
 
 -- Trinket Effects
@@ -779,7 +818,7 @@ local function GetExecuteEnergyRegen()
 end
 
 local function GetAvailableComboPoints()
-	local cp = UnitPower('player', SPELL_POWER_COMBO_POINTS)
+	local cp = UnitPower('player', 4)
 	if var.cast_ability then
 		cp = min(var.cp_max, max(0, cp - var.cast_ability.cp_cost))
 	end
@@ -819,10 +858,7 @@ local function ComboPointDeficit()
 end
 
 local function ComboPointsMaxSpend()
-	if DeeperStratagem.known then
-		return 6
-	end
-	return 5
+	return DeeperStratagem.known and 6 or 5
 end
 
 local function GCD()
@@ -838,13 +874,13 @@ local function TimeInCombat()
 end
 
 local function Stealthed()
-	return Stealth:up() or Vanish:up()
+	return Stealth:up() or Vanish:up() or ShadowDance:up()
 end
 
 local function BloodlustActive()
 	local _, i, id
 	for i = 1, 40 do
-		_, _, _, _, _, _, _, _, _, _, id = UnitAura('player', i, 'HELPFUL')
+		_, _, _, _, _, _, _, _, _, id = UnitAura('player', i, 'HELPFUL')
 		if id == 2825 or id == 32182 or id == 80353 or id == 90355 or id == 160452 or id == 146555 then
 			return true
 		end
@@ -866,11 +902,15 @@ end
 -- Start Ability Modifications
 
 function Envenom:duration()
-	return Envenom.buff_duration + var.cp - 1
+	return Envenom.buff_duration + var.cp
 end
 
 function Rupture:duration()
-	return Rupture.buff_duration * ((var.cp + 1) / 2)
+	return Rupture.buff_duration + (4 * var.cp)
+end
+
+function Nightblade:duration()
+	return Nightblade.buff_duration + (2 * var.cp)
 end
 
 function Vanish:usable()
@@ -928,9 +968,9 @@ local function UpdateVars()
 	var.haste_factor = 1 / (1 + UnitSpellHaste('player') / 100)
 	var.energy_regen = GetPowerRegen()
 	var.execute_regen = GetExecuteEnergyRegen()
-	var.energy_max = UnitPowerMax('player', SPELL_POWER_ENERGY)
-	var.energy = min(var.energy_max, floor(UnitPower('player', SPELL_POWER_ENERGY) + var.execute_regen))
-	var.cp_max = UnitPowerMax('player', SPELL_POWER_COMBO_POINTS)
+	var.energy_max = UnitPowerMax('player', 3)
+	var.energy = min(var.energy_max, floor(UnitPower('player', 3) + var.execute_regen))
+	var.cp_max = UnitPowerMax('player', 4)
 	var.cp = GetAvailableComboPoints()
 	hp = UnitHealth('target')
 	table.remove(Target.healthArray, 1)
@@ -984,8 +1024,6 @@ APL[SPEC.ASSASSINATION].main = function(self)
 				if CripplingPoison:remains() < 300 then
 					return CripplingPoison
 				end
-			elseif LeechingPoison.known and LeechingPoison:remains() < 300 then
-				return LeechingPoison
 			end
 		end
 		if not Stealthed() then
@@ -1013,8 +1051,6 @@ APL[SPEC.ASSASSINATION].main = function(self)
 			if CripplingPoison:remains() < 30 then
 				UseCooldown(CripplingPoison)
 			end
-		elseif LeechingPoison.known and LeechingPoison:remains() < 30 then
-			UseCooldown(LeechingPoison)
 		end
 	end
 	var.energy_regen_combined = var.energy_regen + (Garrote:tickingPoisoned() + Rupture:tickingPoisoned()) * (VenomRush.known and 10 or 7) % 2
@@ -1083,10 +1119,10 @@ APL[SPEC.ASSASSINATION].cds = function(self)
 	if Opt.pot and PotionOfProlongedPower:usable() and (BloodlustActive() or Target.timeToDie <= 60 or Vendetta:up() and Vanish:ready(5)) then
 		return UseCooldown(PotionOfProlongedPower)
 	end
-	if ArcaneTorrent.known and ArcaneTorrent:usable() and Kingsbane:up() and Envenom:down() and EnergyDeficit() >= 15 + var.energy_regen_combined * var.gcd_remains * 1.1 then
+	if ArcaneTorrent:usable() and Envenom:down() and EnergyDeficit() >= 15 + var.energy_regen_combined * var.gcd_remains * 1.1 then
 		return UseCooldown(ArcaneTorrent)
 	end
-	if MarkedForDeath.known and MarkedForDeath:usable() and Target.timeToDie < ComboPointDeficit() * 1.5 then
+	if MarkedForDeath:usable() and Target.timeToDie < ComboPointDeficit() * 1.5 then
 		return UseCooldown(MarkedForDeath)
 	end
 	if Vendetta:usable() and (not Exsanguinate.known or Rupture:up()) then
@@ -1116,8 +1152,6 @@ APL[SPEC.ASSASSINATION].cds = function(self)
 	end
 	if ToxicBlade:usable() and (Target.timeToDie <= 6 or ComboPointDeficit() >= 1 + (MasterAssassinsInitiative:remains() >= 0.2 and 1 or 0) and Rupture:remains() > 8 and Vendetta:cooldown() > 10) then
 		return UseCooldown(ToxicBlade)
-	elseif Kingsbane:usable() and (Target.timeToDie <= 15 or ComboPointDeficit() >= 1 + (MasterAssassinsInitiative:remains() >= 0.2 and 1 or 0) and not Stealthed() and (not ToxicBlade:ready() or (not ToxicBlade.known and Envenom:up()))) then
-		return UseCooldown(Kingsbane)
 	end
 end
 
@@ -1224,14 +1258,202 @@ APL[SPEC.SUBTLETY].main = function(self)
 	if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 30 then
 		UseCooldown(LightforgedAugmentRune)
 	end
+--[[
+actions=call_action_list,name=cds
+# Run fully switches to the Stealthed Rotation (by doing so, it forces pooling if nothing is available).
+actions+=/run_action_list,name=stealthed,if=stealthed.all
+# Apply Nightblade at 2+ CP during the first 10 seconds, after that 4+ CP if it expires within the next GCD or is not up
+actions+=/nightblade,if=target.time_to_die>6&remains<gcd.max&combo_points>=4-(time<10)*2
+# Consider using a Stealth CD when reaching the energy threshold and having space for at least 4 CP
+actions+=/call_action_list,name=stealth_cds,if=energy.deficit<=variable.stealth_threshold&combo_points.deficit>=4
+# Finish at 4+ without DS, 5+ with DS (outside stealth)
+actions+=/call_action_list,name=finish,if=combo_points>=4+talent.deeper_stratagem.enabled|target.time_to_die<=1&combo_points>=3
+# Use a builder when reaching the energy threshold (minus 40 if none of Alacrity, Shadow Focus, and Master of Shadows is selected)
+actions+=/call_action_list,name=build,if=energy.deficit<=variable.stealth_threshold-40*!(talent.alacrity.enabled|talent.shadow_focus.enabled|talent.master_of_shadows.enabled)
+# Lowest priority in all of the APL because it causes a GCD
+actions+=/arcane_torrent,if=energy.deficit>=15+energy.regen
+actions+=/arcane_pulse
+]]
+	local apl
+	apl = self:cds()
+	if apl then return apl end
+	if Stealthed() then
+		return self:stealthed()
+	end
+	if Nightblade:usable() and Target.timeToDie > 6 and Nightblade:remains() < GCD() and ComboPoints() >= (TimeInCombat() < 10 and 2 or 4) then
+		return Nightblade
+	end
+	if EnergyDeficit() <= var.stealth_threshold and ComboPointDeficit() >= 4 then
+		apl = self:stealth_cds()
+		if apl then return apl end
+	end
+	if ComboPoints() >= (DeeperStratagem.known and 5 or 4) or (Target.timeToDie <= 1 and ComboPoints() >= 3) then
+		apl = self:finish()
+		if apl then return apl end
+	end
+	if EnergyDeficit() <= var.stealth_threshold - 40 * ((Alacrity.known or ShadowFocus.known or MasterOfShadows.known) and 0 or 1) then
+		apl = self:build()
+		if apl then return apl end
+	end
+	if ArcaneTorrent:usable() and EnergyDeficit() >= 15 + EnergyRegen() then
+		UseCooldown(ArcaneTorrent)
+	end
+end
+
+APL[SPEC.SUBTLETY].cds = function(self)
+--[[
+actions.cds=potion,if=buff.bloodlust.react|target.time_to_die<=60|(buff.vanish.up&(buff.shadow_blades.up|cooldown.shadow_blades.remains<=30))
+actions.cds+=/blood_fury,if=stealthed.rogue
+actions.cds+=/berserking,if=stealthed.rogue
+actions.cds+=/lights_judgment,if=stealthed.rogue
+actions.cds+=/symbols_of_death,if=dot.nightblade.ticking
+actions.cds+=/marked_for_death,target_if=min:target.time_to_die,if=target.time_to_die<combo_points.deficit
+actions.cds+=/marked_for_death,if=raid_event.adds.in>30&!stealthed.all&combo_points.deficit>=cp_max_spend
+actions.cds+=/shadow_blades,if=combo_points.deficit>=2+stealthed.all
+actions.cds+=/shuriken_tornado,if=spell_targets>=3&dot.nightblade.ticking&buff.symbols_of_death.up&buff.shadow_dance.up
+actions.cds+=/shadow_dance,if=!buff.shadow_dance.up&target.time_to_die<=5+talent.subterfuge.enabled
+]]
+	if Opt.pot and PotionOfProlongedPower:usable() and (BloodlustActive() or Target.timeToDie <= 60 or (Vanish:up() and (ShadowBlades:up() or ShadowBlades:ready(30)))) then
+		return UseCooldown(PotionOfProlongedPower)
+	end
+	if SymbolsOfDeath:usable() and Nightblade:up() then
+		return UseCooldown(SymbolsOfDeath)
+	end
+	if MarkedForDeath:usable() then
+		if Target.timeToDie < ComboPointDeficit() then
+			return UseCooldown(MarkedForDeath)
+		end
+		if not Stealthed() and ComboPointDeficit() >= ComboPointsMaxSpend() then
+			return UseCooldown(MarkedForDeath)
+		end
+	end
+	if ShadowBlades:usable() and ComboPointDeficit() >= (Stealthed() and 3 or 2) then
+		return UseCooldown(ShadowBlades)
+	end
+	if ShurikenTornado:usable() and Enemies() >= 3 and Nightblade:ticking() and SymbolsOfDeath:up() and ShadowDance:up() then
+		return UseCooldown(ShurikenTornado)
+	end
+	if ShadowDance:usable() and ShadowDance:down() and Target.timeToDie <= (Subterfuge.known and 6 or 5) then
+		return UseCooldown(ShadowDance)
+	end
+end
+
+APL[SPEC.SUBTLETY].stealth_cds = function(self)
+--[[
+actions.stealth_cds=variable,name=shd_threshold,value=cooldown.shadow_dance.charges_fractional>=1.75
+# Vanish unless we are about to cap on Dance charges. Only when Find Weakness is about to run out.
+actions.stealth_cds+=/vanish,if=!variable.shd_threshold&debuff.find_weakness.remains<1
+# Pool for Shadowmeld + Shadowstrike unless we are about to cap on Dance charges. Only when Find Weakness is about to run out.
+actions.stealth_cds+=/pool_resource,for_next=1,extra_amount=40
+actions.stealth_cds+=/shadowmeld,if=energy>=40&energy.deficit>=10&!variable.shd_threshold&debuff.find_weakness.remains<1
+# With Dark Shadow only Dance when Nightblade will stay up. Use during Symbols or above threshold.
+actions.stealth_cds+=/shadow_dance,if=(!talent.dark_shadow.enabled|dot.nightblade.remains>=5+talent.subterfuge.enabled)&(variable.shd_threshold|buff.symbols_of_death.remains>=1.2|spell_targets>=4&cooldown.symbols_of_death.remains>10)
+actions.stealth_cds+=/shadow_dance,if=target.time_to_die<cooldown.symbols_of_death.remains
+]]
+	var.shd_threshold = ShadowDance:charges_fractional() >= 1.75
+	if Vanish:usable() and not var.shd_threshold and FindWeakness:remains() < 1 then
+		return UseCooldown(Vanish)
+	end
+	if ShadowDance:usable() then
+		if (not DarkShadow.known or Nightblade:remains() >= (Subterfuge.known and 6 or 5)) and (var.shd_threshold or SymbolsOfDeath:remains() >= 1.2 or Enemies() >= 4 or SymbolsOfDeath:cooldown() > 10) then
+			UseCooldown(ShadowDance)
+		end
+		if Target.timeToDie < SymbolsOfDeath:cooldown() then
+			UseCooldown(ShadowDance)
+		end
+	end
+end
+
+APL[SPEC.SUBTLETY].finish = function(self)
+--[[
+# Keep up Nightblade if it is about to run out. Do not use NB during Dance, if talented into Dark Shadow.
+actions.finish=nightblade,if=(!talent.dark_shadow.enabled|!buff.shadow_dance.up)&target.time_to_die-remains>6&remains<tick_time*2&(spell_targets.shuriken_storm<4|!buff.symbols_of_death.up)
+# Multidotting outside Dance on targets that will live for the duration of Nightblade with refresh during pandemic.
+actions.finish+=/nightblade,cycle_targets=1,if=spell_targets.shuriken_storm>=2&!buff.shadow_dance.up&target.time_to_die>=(5+(2*combo_points))&refreshable
+# Refresh Nightblade early if it will expire during Symbols. Do that refresh if SoD gets ready in the next 5s.
+actions.finish+=/nightblade,if=remains<cooldown.symbols_of_death.remains+10&cooldown.symbols_of_death.remains<=5&target.time_to_die-remains>cooldown.symbols_of_death.remains+5
+# Secret Technique during Symbols. With Dark Shadow and multiple targets also only during Shadow Dance (until threshold in next line).
+actions.finish+=/secret_technique,if=buff.symbols_of_death.up&(!talent.dark_shadow.enabled|spell_targets.shuriken_storm<2|buff.shadow_dance.up)
+# With enough targets always use SecTec on CD.
+actions.finish+=/secret_technique,if=spell_targets.shuriken_storm>=2+talent.dark_shadow.enabled+talent.nightstalker.enabled
+actions.finish+=/eviscerate
+]]
+	if Nightblade:usable() then
+		if (not DarkShadow.known or ShadowDance:down()) and (Target.timeToDie - Nightblade:remains()) > 6 and Nightblade:remains() < (Nightblade:tickTime() * 2) and (Enemies() < 4 or SymbolsOfDeath:down()) then
+			return Nightblade
+		end
+		if Enemies() >= 2 and Nightblade:refreshable() and ShadowDance:down() and Target.timeToDie >= (5 + (2 * ComboPoints())) then
+			return Nightblade
+		end
+		if Nightblade:remains() < (SymbolsOfDeath:cooldown() + 10) and SymbolsOfDeath:ready(5) and (Target.timeToDie - Nightblade:remains()) > (SymbolsOfDeath:cooldown() + 5) then
+			return Nightblade
+		end
+	end
+	if SecretTechnique:usable() then
+		if SymbolsOfDeath:up() and (not DarkShadow.known or Enemies() < 2 or ShadowDance:up()) then
+			return SecretTechnique
+		end
+		if Enemies() >= (2 + (DarkShadow.known and 1 or 0) + (Nightstalker.known and 1 or 0)) then
+			return SecretTechnique
+		end
+	end
+	if Eviscerate:usable() then
+		return Eviscerate
+	end
+end
+
+APL[SPEC.SUBTLETY].build = function(self)
+--[[
+actions.build=shuriken_storm,if=spell_targets.shuriken_storm>=2
+actions.build+=/gloomblade
+actions.build+=/backstab
+]]
+	if ShurikenStorm:usable() and Enemies() >= 2 then
+		return ShurikenStorm
+	end
+	if Gloomblade.known then
+		if Gloomblade:usable() then
+			return Gloomblade
+		end
+	else
+		if Backstab:usable() then
+			return Backstab
+		end
+	end
+end
+
+APL[SPEC.SUBTLETY].stealthed = function(self)
+--[[
+actions.stealthed=shadowstrike,if=buff.stealth.up
+# Finish at 4+ CP without DS, 5+ with DS, and 6 with DS after Vanish
+actions.stealthed+=/call_action_list,name=finish,if=combo_points.deficit<=1-(talent.deeper_stratagem.enabled&buff.vanish.up)
+# At 2 targets with Secret Technique keep up Find Weakness by cycling Shadowstrike.
+actions.stealthed+=/shadowstrike,cycle_targets=1,if=talent.secret_technique.enabled&talent.find_weakness.enabled&debuff.find_weakness.remains<1&spell_targets.shuriken_storm=2&target.time_to_die-remains>6
+actions.stealthed+=/shuriken_storm,if=spell_targets.shuriken_storm>=3
+actions.stealthed+=/shadowstrike
+]]
+	if Stealth:up() and Shadowstrike:usable() then
+		return Shadowstrike
+	end
+	local apl
+	if ComboPointDeficit() <= (DeeperStratagem.known and Vanish:up() and 0 or 1) then
+		apl = self:finish()
+		if apl then return apl end
+	end
+	if SecretTechnique.known and FindWeakness.known and Enemies() == 2 and Shadowstrike:usable() and FindWeakness:remains() < 1 and (Target.timeToDie - Shadowstrike:remains()) > 6 then
+		return Shadowstrike
+	end
+	if ShurikenStorm:usable() and Enemies() >= 3 then
+		return ShurikenStorm
+	end
+	if Shadowstrike:usable() then
+		return Shadowstrike
+	end
 end
 
 APL.Interrupt = function(self)
-	if Kick.known and Kick:usable() then
+	if Kick:usable() then
 		return Kick
-	end
-	if ArcaneTorrent.known and ArcaneTorrent:ready() then
-		return ArcaneTorrent
 	end
 end
 
@@ -1797,6 +2019,9 @@ function events:PLAYER_SPECIALIZATION_CHANGED(unitName)
 		assassinPreviousPanel.ability = nil
 		PreviousGCD = {}
 		currentSpec = GetSpecialization() or 0
+		if currentSpec == SPEC.SUBTLETY then
+			var.stealth_threshold = 60 + (Vigor.known and 35 or 0) + (MasterOfShadows.known and 10 or 0)
+		end
 		Assassin_SetTargetMode(1)
 		UpdateTargetInfo()
 	end
