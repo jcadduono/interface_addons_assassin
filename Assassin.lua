@@ -559,9 +559,16 @@ end
 
 function Ability:applyAura(guid)
 	if self.aura_targets and UnitGUID(self.auraTarget) == guid then -- for now, we can only track if the enemy is targeted
-		local _, _, _, _, _, _, expires = UnitAura(self.auraTarget, self.name, nil, self.auraFilter)
-		if expires then
-			self.aura_targets[guid] = expires
+		local _, i, id, expires
+		for i = 1, 40 do
+			_, _, _, _, _, _, expires, _, _, _, id = UnitAura(self.auraTarget, i, self.auraFilter)
+			if not id then
+				return
+			end
+			if id == self.spellId or id == self.spellId2 then
+				self.aura_targets[guid] = expires
+				return
+			end
 		end
 	end
 end
@@ -915,7 +922,7 @@ local function UpdateVars()
 	var.time = GetTime()
 	start, duration = GetSpellCooldown(61304)
 	var.gcd_remains = start > 0 and duration - (var.time - start) or 0
-	_, _, _, _, _, remains, _, _, _, spellId = UnitCastingInfo('player')
+	_, _, _, _, remains, _, _, _, spellId = UnitCastingInfo('player')
 	var.cast_ability = abilityBySpellId[spellId]
 	var.execute_remains = max(remains and (remains / 1000 - var.time) or 0, var.gcd_remains)
 	var.haste_factor = 1 / (1 + UnitSpellHaste('player') / 100)
@@ -1231,9 +1238,9 @@ end
 -- End Action Priority Lists
 
 local function UpdateInterrupt()
-	local _, _, _, _, start, ends, _, _, notInterruptible = UnitCastingInfo('target')
+	local _, _, _, start, ends, _, _, notInterruptible = UnitCastingInfo('target')
 	if not start then
-		_, _, _, _, start, ends, _, notInterruptible = UnitChannelInfo('target')
+		_, _, _, start, ends, _, notInterruptible = UnitChannelInfo('target')
 	end
 	if not start or notInterruptible then
 		var.interrupt = nil
@@ -1591,7 +1598,7 @@ end
 function events:SPELL_UPDATE_COOLDOWN()
 	if Opt.spell_swipe then
 		local start, duration
-		local _, _, _, _, castStart, castEnd = UnitCastingInfo('player')
+		local _, _, _, castStart, castEnd = UnitCastingInfo('player')
 		if castStart then
 			start = castStart / 1000
 			duration = (castEnd - castStart) / 1000
@@ -1629,7 +1636,8 @@ function events:ADDON_LOADED(name)
 	end
 end
 
-function events:COMBAT_LOG_EVENT_UNFILTERED(timeStamp, eventType, hideCaster, srcGUID, srcName, srcFlags, srcRaidFlags, dstGUID, dstName, dstFlags, dstRaidFlags, spellId, spellName)
+function events:COMBAT_LOG_EVENT_UNFILTERED()
+	local timeStamp, eventType, hideCaster, srcGUID, srcName, srcFlags, srcRaidFlags, dstGUID, dstName, dstFlags, dstRaidFlags, spellId, spellName = CombatLogGetCurrentEventInfo()
 	if Opt.auto_aoe then
 		if eventType == 'SWING_DAMAGE' or eventType == 'SWING_MISSED' then
 			if dstGUID == var.player then
