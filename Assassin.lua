@@ -341,9 +341,6 @@ function Ability:usable(seconds)
 end
 
 function Ability:remains()
-	if self.buff_duration > 0 and self:casting() then
-		return self:duration()
-	end
 	local _, i, id, expires
 	for i = 1, 40 do
 		_, _, _, _, _, expires, _, _, _, id = UnitAura(self.auraTarget, i, self.auraFilter)
@@ -402,9 +399,6 @@ function Ability:cooldownDuration()
 end
 
 function Ability:cooldown()
-	if self.cooldown_duration > 0 and self:casting() then
-		return self:cooldownDuration()
-	end
 	local start, duration = GetSpellCooldown(self.spellId)
 	if start == 0 then
 		return 0
@@ -455,20 +449,8 @@ function Ability:duration()
 	return self.hasted_duration and (var.haste_factor * self.buff_duration) or self.buff_duration
 end
 
-function Ability:casting()
-	return var.cast_ability == self
-end
-
 function Ability:channeling()
 	return UnitChannelInfo('player') == self.name
-end
-
-function Ability:castTime()
-	local _, _, _, castTime = GetSpellInfo(self.spellId)
-	if castTime == 0 then
-		return self.triggers_gcd and var.gcd or 0
-	end
-	return castTime / 1000
 end
 
 function Ability:tickTime()
@@ -478,9 +460,6 @@ end
 function Ability:previous()
 	if self:channeling() then
 		return true
-	end
-	if var.cast_ability then
-		return var.cast_ability == self
 	end
 	return PreviousGCD[1] == self or var.last_ability == self
 end
@@ -813,18 +792,6 @@ RepurposedFelFocuser.buff = Ability.add(242551, true, true)
 
 -- Start Helpful Functions
 
-local function GetExecuteEnergyRegen()
-	return var.energy_regen * var.execute_remains - (var.cast_ability and var.cast_ability:energyCost() or 0)
-end
-
-local function GetAvailableComboPoints()
-	local cp = UnitPower('player', 4)
-	if var.cast_ability then
-		cp = min(var.cp_max, max(0, cp - var.cast_ability.cp_cost))
-	end
-	return cp
-end
-
 local function Energy()
 	return var.energy
 end
@@ -901,6 +868,14 @@ end
 
 -- Start Ability Modifications
 
+function Ability:energyCost()
+	local cost = self.energy_cost
+	if ShadowFocus.known and Stealthed() then
+		cost = cost - (cost * 0.20)
+	end
+	return cost
+end
+
 function Envenom:duration()
 	return Envenom.buff_duration + var.cp
 end
@@ -963,15 +938,13 @@ local function UpdateVars()
 	start, duration = GetSpellCooldown(61304)
 	var.gcd_remains = start > 0 and duration - (var.time - start) or 0
 	_, _, _, _, remains, _, _, _, spellId = UnitCastingInfo('player')
-	var.cast_ability = abilityBySpellId[spellId]
 	var.execute_remains = max(remains and (remains / 1000 - var.time) or 0, var.gcd_remains)
 	var.haste_factor = 1 / (1 + UnitSpellHaste('player') / 100)
 	var.energy_regen = GetPowerRegen()
-	var.execute_regen = GetExecuteEnergyRegen()
 	var.energy_max = UnitPowerMax('player', 3)
-	var.energy = min(var.energy_max, floor(UnitPower('player', 3) + var.execute_regen))
+	var.energy = min(var.energy_max, floor(UnitPower('player', 3) + (var.energy_regen * var.execute_remains)))
 	var.cp_max = UnitPowerMax('player', 4)
-	var.cp = GetAvailableComboPoints()
+	var.cp = UnitPower('player', 4)
 	hp = UnitHealth('target')
 	table.remove(Target.healthArray, 1)
 	Target.healthArray[#Target.healthArray + 1] = hp
