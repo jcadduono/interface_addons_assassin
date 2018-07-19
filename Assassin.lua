@@ -1306,7 +1306,7 @@ actions.cds+=/shadow_dance,if=!buff.shadow_dance.up&target.time_to_die<=5+talent
 	if ShurikenTornado:usable() and Enemies() >= 3 and Nightblade:ticking() and SymbolsOfDeath:up() and ShadowDance:up() then
 		return UseCooldown(ShurikenTornado)
 	end
-	if ShadowDance:usable() and ShadowDance:down() and Target.timeToDie <= (Subterfuge.known and 6 or 5) then
+	if ShadowDance:usable() and not Stealthed() and Target.timeToDie <= (Subterfuge.known and 6 or 5) then
 		return UseCooldown(ShadowDance)
 	end
 end
@@ -1327,12 +1327,12 @@ actions.stealth_cds+=/shadow_dance,if=target.time_to_die<cooldown.symbols_of_dea
 	if Vanish:usable() and not var.shd_threshold and FindWeakness:remains() < 1 then
 		return UseCooldown(Vanish)
 	end
-	if ShadowDance:usable() then
+	if ShadowDance:usable() and not Stealthed() then
 		if (not DarkShadow.known or Nightblade:remains() >= (Subterfuge.known and 6 or 5)) and (var.shd_threshold or SymbolsOfDeath:remains() >= 1.2 or Enemies() >= 4 or SymbolsOfDeath:cooldown() > 10) then
-			UseCooldown(ShadowDance)
+			return UseCooldown(ShadowDance)
 		end
 		if Target.timeToDie < SymbolsOfDeath:cooldown() then
-			UseCooldown(ShadowDance)
+			return UseCooldown(ShadowDance)
 		end
 	end
 end
