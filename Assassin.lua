@@ -102,16 +102,9 @@ local Target = {
 -- list of previous GCD abilities
 local PreviousGCD = {}
 
--- tier set equipped pieces count
-local Tier = {
-	T19P = 0,
-	T20P = 0,
-	T21P = 0
-}
-
--- legendary item equipped
+-- items equipped with special effects
 local ItemEquipped = {
-	SephuzsSecret = false
+
 }
 
 local var = {
@@ -317,6 +310,9 @@ function Ability.add(spellId, buff, player, spellId2)
 	setmetatable(ability, Ability)
 	abilities[#abilities + 1] = ability
 	abilityBySpellId[spellId] = ability
+	if spellId2 then
+		abilityBySpellId[spellId2] = ability
+	end
 	return ability
 end
 
@@ -432,15 +428,23 @@ function Ability:charges()
 	return (GetSpellCharges(self.spellId)) or 0
 end
 
-function Ability:charges_fractional()
+function Ability:chargesFractional()
 	local charges, max_charges, recharge_start, recharge_time = GetSpellCharges(self.spellId)
 	if charges >= max_charges then
 		return charges
 	end
-	return charges + ((var.time - recharge_start) / recharge_time)
+	return charges + ((max(0, var.time - recharge_start + var.execute_remains)) / recharge_time)
 end
 
-function Ability:max_charges()
+function Ability:fullRechargeTime()
+	local charges, max_charges, recharge_start, recharge_time = GetSpellCharges(self.spellId)
+	if charges >= max_charges then
+		return 0
+	end
+	return (max_charges - charges - 1) * recharge_time + (recharge_time - (var.time - recharge_start) - var.execute_remains)
+end
+
+function Ability:maxCharges()
 	local _, max_charges = GetSpellCharges(self.spellId)
 	return max_charges or 0
 end
@@ -521,7 +525,7 @@ function trackAuras:purge()
 	local _, ability, guid, expires
 	for _, ability in next, self.abilities do
 		for guid, expires in next, ability.aura_targets do
-			if combatStartTime == 0 or expires <= now then
+			if expires <= now then
 				ability:removeAura(guid)
 			end
 		end
@@ -568,8 +572,7 @@ Kick.triggers_gcd = false
 local Stealth = Ability.add(1784, true, true, 115191)
 local Vanish = Ability.add(1856, true, true, 11327)
 ------ Procs
-local SephuzsSecret = Ability.add(208052, true, true)
-SephuzsSecret.cooldown_duration = 30
+
 ------ Talents
 local Alacrity = Ability.add(193539, true, true)
 Alacrity.buff_duration = 20
@@ -717,9 +720,6 @@ ShurikenTornado.tick_interval = 1
 ShurikenTornado:setAutoAoe(true)
 ------ Procs
 
--- Tier Bonuses & Legendaries
-local MasterAssassinsInitiative = Ability.add(235027, true, true) -- Mantle of the Master Assassin
-MasterAssassinsInitiative.buff_duration = 5
 -- Racials
 local ArcaneTorrent = Ability.add(25046, true, false) -- Blood Elf
 ArcaneTorrent.energy_cost = -15
@@ -848,20 +848,41 @@ local function BloodlustActive()
 	local _, i, id
 	for i = 1, 40 do
 		_, _, _, _, _, _, _, _, _, id = UnitAura('player', i, 'HELPFUL')
-		if id == 2825 or id == 32182 or id == 80353 or id == 90355 or id == 160452 or id == 146555 then
+		if (
+			id == 2825 or	-- Bloodlust (Horde Shaman)
+			id == 32182 or	-- Heroism (Alliance Shaman)
+			id == 80353 or	-- Time Warp (Mage)
+			id == 90355 or	-- Ancient Hysteria (Hunter Pet - Core Hound)
+			id == 160452 or -- Netherwinds (Hunter Pet - Nether Ray)
+			id == 264667 or -- Primal Rage (Hunter Pet - Ferocity)
+			id == 178207 or -- Drums of Fury (Leatherworking)
+			id == 146555 or -- Drums of Rage (Leatherworking)
+			id == 230935 or -- Drums of the Mountain (Leatherworking)
+			id == 256740    -- Drums of the Maelstrom (Leatherworking)
+		) then
 			return true
 		end
 	end
 end
 
 local function TargetIsStunnable()
+	if UnitIsPlayer('target') then
+		return true
+	end
 	if Target.boss then
+		return false
+	end
+	if var.instance == 'raid' then
 		return false
 	end
 	if UnitHealthMax('target') > UnitHealthMax('player') * 25 then
 		return false
 	end
 	return true
+end
+
+local function InArenaOrBattleground()
+	return var.instance == 'arena' or var.instance == 'pvp'
 end
 
 -- End Helpful Functions
@@ -912,17 +933,6 @@ end
 
 Garrote.tickingPoisoned = TickingPoisoned
 Rupture.tickingPoisoned = TickingPoisoned
-
-function SephuzsSecret:cooldown()
-	if not self.cooldown_start then
-		return 0
-	end
-	if var.time >= self.cooldown_start + self.cooldown_duration then
-		self.cooldown_start = nil
-		return 0
-	end
-	return self.cooldown_duration - (var.time - self.cooldown_start)
-end
 
 -- End Ability Modifications
 
@@ -979,11 +989,13 @@ local APL = {
 
 APL[SPEC.ASSASSINATION].main = function(self)
 	if TimeInCombat() == 0 then
-		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
-			return RepurposedFelFocuser
-		end
-		if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 300 then
-			return LightforgedAugmentRune
+		if not InArenaOrBattleground() then
+			if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
+				return RepurposedFelFocuser
+			end
+			if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 300 then
+				return LightforgedAugmentRune
+			end
 		end
 		if Opt.poisons then
 			if WoundPoison:up() then
@@ -1002,15 +1014,19 @@ APL[SPEC.ASSASSINATION].main = function(self)
 		if not Stealthed() then
 			return Stealth
 		end
-		if Opt.pot and PotionOfProlongedPower:usable() then
-			UseCooldown(PotionOfProlongedPower)
+		if not InArenaOrBattleground() then
+			if Opt.pot and PotionOfProlongedPower:usable() then
+				UseCooldown(PotionOfProlongedPower)
+			end
 		end
 	end
-	if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not FlaskOfTheSeventhDemon.buff:up() then
-		UseCooldown(RepurposedFelFocuser)
-	end
-	if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 30 then
-		UseCooldown(LightforgedAugmentRune)
+	if not InArenaOrBattleground() then
+		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not FlaskOfTheSeventhDemon.buff:up() then
+			UseCooldown(RepurposedFelFocuser)
+		end
+		if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 30 then
+			UseCooldown(LightforgedAugmentRune)
+		end
 	end
 	if Opt.poisons then
 		if WoundPoison:up() then
@@ -1106,7 +1122,7 @@ APL[SPEC.ASSASSINATION].cds = function(self)
 			return UseCooldown(Vanish)
 		end
 		if Nightstalker.known then
-			if ComboPoints() >= ComboPointsMaxSpend() and MasterAssassinsInitiative:down() then
+			if ComboPoints() >= ComboPointsMaxSpend() then
 				if not Exsanguinate.known and Vendetta:up() then
 					return UseCooldown(Vanish)
 				elseif Exsanguinate.known and Exsanguinate:ready(1) then
@@ -1114,16 +1130,14 @@ APL[SPEC.ASSASSINATION].cds = function(self)
 				end
 			end
 		elseif Subterfuge.known then
-			if ItemEquipped.MantleOfTheMasterAssassin and (Vendetta:up() or Target.timeToDie < 10) and MasterAssassinsInitiative:down() then
-				return UseCooldown(Vanish)
-			elseif not ItemEquipped.MantleOfTheMasterAssassin and Garrote:refreshable() and ((Enemies() <= 3 and ComboPointDeficit() >= 1 + Enemies()) or (Enemies() >= 4 and ComboPointDeficit() >= 4)) then
+			if Garrote:refreshable() and ((Enemies() <= 3 and ComboPointDeficit() >= 1 + Enemies()) or (Enemies() >= 4 and ComboPointDeficit() >= 4)) then
 				return UseCooldown(Vanish)
 			end
 		elseif ShadowFocus.known and var.energy_time_to_max_combined >= 2 and ComboPointDeficit() >= 4 then
 			return UseCooldown(Vanish)
 		end
 	end
-	if ToxicBlade:usable() and (Target.timeToDie <= 6 or ComboPointDeficit() >= 1 + (MasterAssassinsInitiative:remains() >= 0.2 and 1 or 0) and Rupture:remains() > 8 and Vendetta:cooldown() > 10) then
+	if ToxicBlade:usable() and (Target.timeToDie <= 6 or ComboPointDeficit() >= 1 and Rupture:remains() > 8 and Vendetta:cooldown() > 10) then
 		return UseCooldown(ToxicBlade)
 	end
 end
@@ -1189,47 +1203,59 @@ end
 
 APL[SPEC.OUTLAW].main = function(self)
 	if TimeInCombat() == 0 then
-		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
-			return RepurposedFelFocuser
-		end
-		if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 300 then
-			return LightforgedAugmentRune
+		if not InArenaOrBattleground() then
+			if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
+				return RepurposedFelFocuser
+			end
+			if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 300 then
+				return LightforgedAugmentRune
+			end
 		end
 		if not Stealthed() then
 			return Stealth
 		end
-		if Opt.pot and PotionOfProlongedPower:usable() then
-			UseCooldown(PotionOfProlongedPower)
+		if not InArenaOrBattleground() then
+			if Opt.pot and PotionOfProlongedPower:usable() then
+				UseCooldown(PotionOfProlongedPower)
+			end
 		end
 	end
-	if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not FlaskOfTheSeventhDemon.buff:up() then
-		UseCooldown(RepurposedFelFocuser)
-	end
-	if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 30 then
-		UseCooldown(LightforgedAugmentRune)
+	if not InArenaOrBattleground() then
+		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not FlaskOfTheSeventhDemon.buff:up() then
+			UseCooldown(RepurposedFelFocuser)
+		end
+		if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 30 then
+			UseCooldown(LightforgedAugmentRune)
+		end
 	end
 end
 
 APL[SPEC.SUBTLETY].main = function(self)
 	if TimeInCombat() == 0 then
-		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
-			return RepurposedFelFocuser
-		end
-		if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 300 then
-			return LightforgedAugmentRune
+		if not InArenaOrBattleground() then
+			if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
+				return RepurposedFelFocuser
+			end
+			if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 300 then
+				return LightforgedAugmentRune
+			end
 		end
 		if not Stealthed() then
 			return Stealth
 		end
-		if Opt.pot and PotionOfProlongedPower:usable() then
-			UseCooldown(PotionOfProlongedPower)
+		if not InArenaOrBattleground() then
+			if Opt.pot and PotionOfProlongedPower:usable() then
+				UseCooldown(PotionOfProlongedPower)
+			end
 		end
 	end
-	if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not FlaskOfTheSeventhDemon.buff:up() then
-		UseCooldown(RepurposedFelFocuser)
-	end
-	if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 30 then
-		UseCooldown(LightforgedAugmentRune)
+	if not InArenaOrBattleground() then
+		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not FlaskOfTheSeventhDemon.buff:up() then
+			UseCooldown(RepurposedFelFocuser)
+		end
+		if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 30 then
+			UseCooldown(LightforgedAugmentRune)
+		end
 	end
 --[[
 actions=call_action_list,name=cds
@@ -1313,7 +1339,7 @@ end
 
 APL[SPEC.SUBTLETY].stealth_cds = function(self)
 --[[
-actions.stealth_cds=variable,name=shd_threshold,value=cooldown.shadow_dance.charges_fractional>=1.75
+actions.stealth_cds=variable,name=shd_threshold,value=cooldown.shadow_dance.chargesFractional()>=1.75
 # Vanish unless we are about to cap on Dance charges. Only when Find Weakness is about to run out.
 actions.stealth_cds+=/vanish,if=!variable.shd_threshold&debuff.find_weakness.remains<1
 # Pool for Shadowmeld + Shadowstrike unless we are about to cap on Dance charges. Only when Find Weakness is about to run out.
@@ -1323,7 +1349,7 @@ actions.stealth_cds+=/shadowmeld,if=energy>=40&energy.deficit>=10&!variable.shd_
 actions.stealth_cds+=/shadow_dance,if=(!talent.dark_shadow.enabled|dot.nightblade.remains>=5+talent.subterfuge.enabled)&(variable.shd_threshold|buff.symbols_of_death.remains>=1.2|spell_targets>=4&cooldown.symbols_of_death.remains>10)
 actions.stealth_cds+=/shadow_dance,if=target.time_to_die<cooldown.symbols_of_death.remains
 ]]
-	var.shd_threshold = ShadowDance:charges_fractional() >= 1.75
+	var.shd_threshold = ShadowDance:chargesFractional()() >= 1.75
 	if Vanish:usable() and not var.shd_threshold and FindWeakness:remains() < 1 then
 		return UseCooldown(Vanish)
 	end
@@ -1615,17 +1641,6 @@ function Equipped(name, slot)
 	return false
 end
 
-function EquippedTier(name)
-	local slot = { 1, 3, 5, 7, 10, 15 }
-	local equipped, i = 0
-	for i = 1, #slot do
-		if Equipped(name, slot) then
-			equipped = equipped + 1
-		end
-	end
-	return equipped
-end
-
 local function UpdateDraggable()
 	assassinPanel:EnableMouse(Opt.aoe or not Opt.locked)
 	if Opt.aoe then
@@ -1847,53 +1862,44 @@ function events:COMBAT_LOG_EVENT_UNFILTERED()
 	if srcGUID ~= var.player then
 		return
 	end
+	local castedAbility = abilityBySpellId[spellId]
+	if not castedAbility then
+		return
+	end
+--[[ DEBUG ]
+	print(format('EVENT %s TRACK CHECK FOR %s ID %d', eventType, spellName, spellId))
+	if eventType == 'SPELL_AURA_APPLIED' or eventType == 'SPELL_AURA_REFRESH' or eventType == 'SPELL_PERIODIC_DAMAGE' or eventType == 'SPELL_DAMAGE' then
+		print(format('%s: %s - time: %.2f - time since last: %.2f', eventType, spellName, timeStamp, timeStamp - (castedAbility.last_trigger or timeStamp)))
+		castedAbility.last_trigger = timeStamp
+	end
+--[ DEBUG ]]
 	if eventType == 'SPELL_CAST_SUCCESS' then
-		local castedAbility = abilityBySpellId[spellId]
-		if castedAbility then
-			var.last_ability = castedAbility
-			if var.last_ability.triggers_gcd then
-				PreviousGCD[10] = nil
-				table.insert(PreviousGCD, 1, castedAbility)
-			end
-			if Opt.previous and assassinPanel:IsVisible() then
-				assassinPreviousPanel.ability = var.last_ability
-				assassinPreviousPanel.border:SetTexture('Interface\\AddOns\\Assassin\\border.blp')
-				assassinPreviousPanel.icon:SetTexture(var.last_ability.icon)
-				assassinPreviousPanel:Show()
-			end
+		var.last_ability = castedAbility
+		if castedAbility.triggers_gcd then
+			PreviousGCD[10] = nil
+			table.insert(PreviousGCD, 1, castedAbility)
+		end
+		if Opt.previous and assassinPanel:IsVisible() then
+			assassinPreviousPanel.ability = castedAbility
+			assassinPreviousPanel.border:SetTexture('Interface\\AddOns\\Assassin\\border.blp')
+			assassinPreviousPanel.icon:SetTexture(castedAbility.icon)
+			assassinPreviousPanel:Show()
 		end
 		return
 	end
-	if eventType == 'SPELL_MISSED' then
-		if Opt.previous and Opt.miss_effect and assassinPanel:IsVisible() and assassinPreviousPanel.ability then
-			if spellId == assassinPreviousPanel.ability.spellId or spellId == assassinPreviousPanel.ability.spellId2 then
-				assassinPreviousPanel.border:SetTexture('Interface\\AddOns\\Assassin\\misseffect.blp')
-			end
+	if eventType == 'SPELL_MISSED' or eventType == 'SPELL_DAMAGE' or eventType == 'SPELL_AURA_APPLIED' or eventType == 'SPELL_AURA_REFRESH' then
+		if Opt.auto_aoe and castedAbility.auto_aoe then
+			castedAbility:recordTargetHit(dstGUID)
 		end
-		return
-	end
-	if eventType == 'SPELL_DAMAGE' then
-		if Opt.auto_aoe then
-			local _, ability
-			for _, ability in next, autoAoe.abilities do
-				if spellId == ability.spellId or spellId == ability.spellId2 then
-					ability:recordTargetHit(dstGUID)
-				end
-			end
-		end
-		return
-	end
-	if eventType == 'SPELL_AURA_APPLIED' then
-		if spellId == SephuzsSecret.spellId then
-			SephuzsSecret.cooldown_start = GetTime()
-			return
+		if Opt.previous and Opt.miss_effect and eventType == 'SPELL_MISSED' and ghPanel:IsVisible() and castedAbility == ghPreviousPanel.ability then
+			ghPreviousPanel.border:SetTexture('Interface\\AddOns\\GoodHunting\\misseffect.blp')
 		end
 	end
-	if trackAuras.abilities[spellId] then
+	if castedAbility.aura_targets then
 		if eventType == 'SPELL_AURA_APPLIED' or eventType == 'SPELL_AURA_REFRESH' then
-			trackAuras.abilities[spellId]:applyAura(dstGUID)
+			castedAbility:applyAura(dstGUID)
 		elseif eventType == 'SPELL_AURA_REMOVED' or eventType == 'UNIT_DIED' or eventType == 'UNIT_DESTROYED' or eventType == 'UNIT_DISSIPATES' or eventType == 'SPELL_INSTAKILL' or eventType == 'PARTY_KILL' then
-			trackAuras.abilities[spellId]:removeAura(dstGUID)
+			castedAbility:removeAura(dstGUID)
 		end
 	end
 end
@@ -1927,7 +1933,15 @@ local function UpdateTargetInfo()
 		end
 	end
 	Target.level = UnitLevel('target')
-	Target.boss = Target.level == -1 or (Target.level >= UnitLevel('player') + 2 and not UnitInRaid('player'))
+	if UnitIsPlayer('target') then
+		Target.boss = false
+	elseif Target.level == -1 then
+		Target.boss = true
+	elseif var.instance == 'party' and Target.level >= UnitLevel('player') + 2 then
+		Target.boss = true
+	else
+		Target.boss = false
+	end
 	Target.hostile = UnitCanAttack('player', 'target') and not UnitIsDead('target')
 	if Target.hostile or Opt.always_on then
 		UpdateCombat()
@@ -1958,9 +1972,15 @@ end
 
 function events:PLAYER_REGEN_ENABLED()
 	combatStartTime = 0
-	trackAuras:purge()
+	local _, ability, guid
+	for _, ability in next, abilities do
+		if ability.aura_targets then
+			for guid in next, ability.aura_targets do
+				ability.aura_targets[guid] = nil
+			end
+		end
+	end
 	if Opt.auto_aoe then
-		local guid
 		for guid in next, autoAoe.targets do
 			autoAoe.targets[guid] = nil
 		end
@@ -1973,10 +1993,7 @@ function events:PLAYER_REGEN_ENABLED()
 end
 
 function events:PLAYER_EQUIPMENT_CHANGED()
-	Tier.T19P = EquippedTier("Doomblade ")
-	Tier.T20P = EquippedTier("Fanged Slayer's ")
-	Tier.T21P = EquippedTier(" of the Dashing Scoundrel")
-	ItemEquipped.SephuzsSecret = Equipped("Sephuz's Secret")
+
 end
 
 function events:PLAYER_SPECIALIZATION_CHANGED(unitName)
@@ -2007,6 +2024,8 @@ function events:PLAYER_ENTERING_WORLD()
 		CreateOverlayGlows()
 		HookResourceFrame()
 	end
+	local _
+	_, var.instance = IsInInstance()
 	var.player = UnitGUID('player')
 	UpdateVars()
 end
