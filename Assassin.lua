@@ -697,6 +697,7 @@ Shadowstrike.cp_cost = -2
 local ShurikenStorm = Ability.add(197835, false, true)
 ShurikenStorm.energy_cost = 35
 ShurikenStorm.cp_cost = -2
+ShurikenStorm:setAutoAoe(true)
 local SymbolsOfDeath = Ability.add(212283, true, true)
 SymbolsOfDeath.buff_duration = 10
 SymbolsOfDeath.cooldown_duration = 30
@@ -779,8 +780,6 @@ function InventoryItem:usable(seconds)
 end
 
 -- Inventory Items
-local LightforgedAugmentRune = InventoryItem.add(153023)
-LightforgedAugmentRune.buff = Ability.add(224001, true, true)
 local FlaskOfTheSeventhDemon = InventoryItem.add(127848)
 FlaskOfTheSeventhDemon.buff = Ability.add(188033, true, true)
 local PotionOfProlongedPower = InventoryItem.add(142117)
@@ -993,9 +992,6 @@ APL[SPEC.ASSASSINATION].main = function(self)
 			if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
 				return RepurposedFelFocuser
 			end
-			if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 300 then
-				return LightforgedAugmentRune
-			end
 		end
 		if Opt.poisons then
 			if WoundPoison:up() then
@@ -1023,9 +1019,6 @@ APL[SPEC.ASSASSINATION].main = function(self)
 	if not InArenaOrBattleground() then
 		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not FlaskOfTheSeventhDemon.buff:up() then
 			UseCooldown(RepurposedFelFocuser)
-		end
-		if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 30 then
-			UseCooldown(LightforgedAugmentRune)
 		end
 	end
 	if Opt.poisons then
@@ -1207,9 +1200,6 @@ APL[SPEC.OUTLAW].main = function(self)
 			if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
 				return RepurposedFelFocuser
 			end
-			if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 300 then
-				return LightforgedAugmentRune
-			end
 		end
 		if not Stealthed() then
 			return Stealth
@@ -1223,9 +1213,6 @@ APL[SPEC.OUTLAW].main = function(self)
 	if not InArenaOrBattleground() then
 		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not FlaskOfTheSeventhDemon.buff:up() then
 			UseCooldown(RepurposedFelFocuser)
-		end
-		if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 30 then
-			UseCooldown(LightforgedAugmentRune)
 		end
 	end
 end
@@ -1236,9 +1223,6 @@ APL[SPEC.SUBTLETY].main = function(self)
 			if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
 				return RepurposedFelFocuser
 			end
-			if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 300 then
-				return LightforgedAugmentRune
-			end
 		end
 		if not Stealthed() then
 			return Stealth
@@ -1252,9 +1236,6 @@ APL[SPEC.SUBTLETY].main = function(self)
 	if not InArenaOrBattleground() then
 		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not FlaskOfTheSeventhDemon.buff:up() then
 			UseCooldown(RepurposedFelFocuser)
-		end
-		if LightforgedAugmentRune:usable() and LightforgedAugmentRune.buff:remains() < 30 then
-			UseCooldown(LightforgedAugmentRune)
 		end
 	end
 --[[
@@ -1349,7 +1330,7 @@ actions.stealth_cds+=/shadowmeld,if=energy>=40&energy.deficit>=10&!variable.shd_
 actions.stealth_cds+=/shadow_dance,if=(!talent.dark_shadow.enabled|dot.nightblade.remains>=5+talent.subterfuge.enabled)&(variable.shd_threshold|buff.symbols_of_death.remains>=1.2|spell_targets>=4&cooldown.symbols_of_death.remains>10)
 actions.stealth_cds+=/shadow_dance,if=target.time_to_die<cooldown.symbols_of_death.remains
 ]]
-	var.shd_threshold = ShadowDance:chargesFractional()() >= 1.75
+	var.shd_threshold = ShadowDance:chargesFractional() >= 1.75
 	if Vanish:usable() and not var.shd_threshold and FindWeakness:remains() < 1 then
 		return UseCooldown(Vanish)
 	end
@@ -1879,6 +1860,9 @@ function events:COMBAT_LOG_EVENT_UNFILTERED()
 			PreviousGCD[10] = nil
 			table.insert(PreviousGCD, 1, castedAbility)
 		end
+		if Opt.auto_aoe and castedAbility == Backstab then
+			Assassin_SetTargetMode(1)
+		end
 		if Opt.previous and assassinPanel:IsVisible() then
 			assassinPreviousPanel.ability = castedAbility
 			assassinPreviousPanel.border:SetTexture('Interface\\AddOns\\Assassin\\border.blp')
@@ -1891,8 +1875,8 @@ function events:COMBAT_LOG_EVENT_UNFILTERED()
 		if Opt.auto_aoe and castedAbility.auto_aoe then
 			castedAbility:recordTargetHit(dstGUID)
 		end
-		if Opt.previous and Opt.miss_effect and eventType == 'SPELL_MISSED' and ghPanel:IsVisible() and castedAbility == ghPreviousPanel.ability then
-			ghPreviousPanel.border:SetTexture('Interface\\AddOns\\GoodHunting\\misseffect.blp')
+		if Opt.previous and Opt.miss_effect and eventType == 'SPELL_MISSED' and assassinPanel:IsVisible() and castedAbility == assassinPreviousPanel.ability then
+			assassinPreviousPanel.border:SetTexture('Interface\\AddOns\\GoodHunting\\misseffect.blp')
 		end
 	end
 	if castedAbility.aura_targets then
