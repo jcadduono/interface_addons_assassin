@@ -107,6 +107,9 @@ local ItemEquipped = {
 
 }
 
+-- Azerite trait API access
+local Azerite = {}
+
 local var = {
 	gcd = 1.0
 }
@@ -468,6 +471,10 @@ function Ability:previous()
 	return PreviousGCD[1] == self or var.last_ability == self
 end
 
+function Ability:azeriteRank()
+	return Azerite.traits[self.spellId] or 0
+end
+
 function Ability:setAutoAoe(enabled)
 	if enabled and not self.auto_aoe then
 		self.auto_aoe = true
@@ -798,6 +805,46 @@ PotionOfProlongedPower.buff.triggers_gcd = false
 local RepurposedFelFocuser = InventoryItem.add(147707)
 RepurposedFelFocuser.buff = Ability.add(242551, true, true)
 -- End Inventory Items
+
+-- Start Azerite Trait API
+
+Azerite.equip_slots = { 1, 3, 5 } -- Head, Shoulder, Chest
+
+function Azerite:initialize()
+	self.locations = {}
+	self.traits = {}
+	local i
+	for i = 1, #self.equip_slots do
+		self.locations[i] = ItemLocation:CreateFromEquipmentSlot(self.equip_slots[i])
+	end
+end
+
+function Azerite:update()
+	local _, loc, tinfo, tslot, pid, pinfo
+	for pid in next, self.traits do
+		self.traits[pid] = nil
+	end
+	for _, loc in next, self.locations do
+		if GetInventoryItemID('player', loc:GetEquipmentSlot()) and C_AzeriteEmpoweredItem.IsAzeriteEmpoweredItem(loc) then
+			tinfo = C_AzeriteEmpoweredItem.GetAllTierInfo(loc)
+			for _, tslot in next, tinfo do
+				if tslot.azeritePowerIDs then
+					for _, pid in next, tslot.azeritePowerIDs do
+						if C_AzeriteEmpoweredItem.IsPowerSelected(loc, pid) then
+							self.traits[pid] = 1 + (self.traits[pid] or 0)
+							pinfo = C_AzeriteEmpoweredItem.GetPowerInfo(pid)
+							if pinfo and pinfo.spellID then
+								self.traits[pinfo.spellID] = self.traits[pid]
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+end
+
+-- End Azerite Trait API
 
 -- Start Helpful Functions
 
@@ -1871,6 +1918,7 @@ function events:ADDON_LOADED(name)
 		assassinCooldownPanel:SetScale(Opt.scale.cooldown)
 		assassinInterruptPanel:SetScale(Opt.scale.interrupt)
 		assassinExtraPanel:SetScale(Opt.scale.extra)
+		Azerite:initialize()
 	end
 end
 
@@ -2023,17 +2071,24 @@ function events:PLAYER_REGEN_ENABLED()
 	end
 end
 
-function events:PLAYER_EQUIPMENT_CHANGED()
+local function UpdateAbilityData()
+	local _, ability
+	for _, ability in next, abilities do
+		ability.name, _, ability.icon = GetSpellInfo(ability.spellId)
+		ability.known = (IsPlayerSpell(ability.spellId) or (ability.spellId2 and IsPlayerSpell(ability.spellId2)) or Azerite.traits[ability.spellId]) and true or false
+	end
+end
 
+function events:PLAYER_EQUIPMENT_CHANGED()
+	Azerite:update()
+	UpdateAbilityData()
 end
 
 function events:PLAYER_SPECIALIZATION_CHANGED(unitName)
 	if unitName == 'player' then
-		local _, i
-		for i = 1, #abilities do
-			abilities[i].name, _, abilities[i].icon = GetSpellInfo(abilities[i].spellId)
-			abilities[i].known = IsPlayerSpell(abilities[i].spellId) or (abilities[i].spellId2 and IsPlayerSpell(abilities[i].spellId2))
-		end
+		Azerite:update()
+		UpdateAbilityData()
+		local i
 		for i = 1, #inventoryItems do
 			inventoryItems[i].name, _, _, _, _, _, _, _, _, inventoryItems[i].icon = GetItemInfo(inventoryItems[i].itemId)
 		end
