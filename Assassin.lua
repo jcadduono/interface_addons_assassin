@@ -698,6 +698,9 @@ local ShurikenStorm = Ability.add(197835, false, true)
 ShurikenStorm.energy_cost = 35
 ShurikenStorm.cp_cost = -2
 ShurikenStorm:setAutoAoe(true)
+local ShurikenToss = Ability.add(114014, false, true)
+ShurikenToss.energy_cost = 40
+ShurikenToss.cp_cost = -1
 local SymbolsOfDeath = Ability.add(212283, true, true)
 SymbolsOfDeath.buff_duration = 10
 SymbolsOfDeath.cooldown_duration = 30
@@ -721,6 +724,13 @@ ShurikenTornado.tick_interval = 1
 ShurikenTornado:setAutoAoe(true)
 ------ Procs
 
+-- Azerite Traits
+local BladeInTheShadows = Ability.add(275896, true, true, 279754)
+BladeInTheShadows.buff_duration = 60
+local NightsVengeance = Ability.add(273418, true, true, 273424)
+NightsVengeance.buff_duration = 8
+local SharpenedBlades = Ability.add(272911, true, true, 272916)
+SharpenedBlades.buff_duration = 20
 -- Racials
 local ArcaneTorrent = Ability.add(25046, true, false) -- Blood Elf
 ArcaneTorrent.energy_cost = -15
@@ -1239,6 +1249,7 @@ APL[SPEC.SUBTLETY].main = function(self)
 		end
 	end
 --[[
+# Check CDs at first
 actions=call_action_list,name=cds
 # Run fully switches to the Stealthed Rotation (by doing so, it forces pooling if nothing is available).
 actions+=/run_action_list,name=stealthed,if=stealthed.all
@@ -1248,11 +1259,14 @@ actions+=/nightblade,if=target.time_to_die>6&remains<gcd.max&combo_points>=4-(ti
 actions+=/call_action_list,name=stealth_cds,if=energy.deficit<=variable.stealth_threshold&combo_points.deficit>=4
 # Finish at 4+ without DS, 5+ with DS (outside stealth)
 actions+=/call_action_list,name=finish,if=combo_points>=4+talent.deeper_stratagem.enabled|target.time_to_die<=1&combo_points>=3
+# With DS also finish at 4+ against exactly 4 targets (outside stealth)
+actions+=/call_action_list,name=finish,if=spell_targets.shuriken_storm=4&combo_points>=4
 # Use a builder when reaching the energy threshold (minus 40 if none of Alacrity, Shadow Focus, and Master of Shadows is selected)
 actions+=/call_action_list,name=build,if=energy.deficit<=variable.stealth_threshold-40*!(talent.alacrity.enabled|talent.shadow_focus.enabled|talent.master_of_shadows.enabled)
 # Lowest priority in all of the APL because it causes a GCD
 actions+=/arcane_torrent,if=energy.deficit>=15+energy.regen
 actions+=/arcane_pulse
+actions+=/lights_judgment
 ]]
 	local apl
 	apl = self:cds()
@@ -1271,6 +1285,10 @@ actions+=/arcane_pulse
 		apl = self:finish()
 		if apl then return apl end
 	end
+	if ComboPoints() >= 4 and Enemies() == 4 then
+		apl = self:finish()
+		if apl then return apl end
+	end
 	if EnergyDeficit() <= var.stealth_threshold - 40 * ((Alacrity.known or ShadowFocus.known or MasterOfShadows.known) and 0 or 1) then
 		apl = self:build()
 		if apl then return apl end
@@ -1283,12 +1301,17 @@ end
 APL[SPEC.SUBTLETY].cds = function(self)
 --[[
 actions.cds=potion,if=buff.bloodlust.react|target.time_to_die<=60|(buff.vanish.up&(buff.shadow_blades.up|cooldown.shadow_blades.remains<=30))
+# Falling back to default item usage: Use when stealthed
+actions.cds+=/use_item,name=galecallers_boon,if=stealthed.rogue|target.time_to_die<20
 actions.cds+=/blood_fury,if=stealthed.rogue
 actions.cds+=/berserking,if=stealthed.rogue
-actions.cds+=/lights_judgment,if=stealthed.rogue
+actions.cds+=/fireblood,if=stealthed.rogue
+actions.cds+=/ancestral_call,if=stealthed.rogue
 actions.cds+=/symbols_of_death,if=dot.nightblade.ticking
-actions.cds+=/marked_for_death,target_if=min:target.time_to_die,if=target.time_to_die<combo_points.deficit
-actions.cds+=/marked_for_death,if=raid_event.adds.in>30&!stealthed.all&combo_points.deficit>=cp_max_spend
+# If adds are up, snipe the one with lowest TTD. Use when dying faster than CP deficit or not stealthed without any CP.
+actions.cds+=/marked_for_death,target_if=min:target.time_to_die,if=raid_event.adds.up&(target.time_to_die<combo_points.deficit|!stealthed.all&combo_points.deficit>=cp_max_spend)
+# If no adds will die within the next 30s, use MfD on boss without any CP and no stealth.
+actions.cds+=/marked_for_death,if=raid_event.adds.in>30-raid_event.adds.duration&!stealthed.all&combo_points.deficit>=cp_max_spend
 actions.cds+=/shadow_blades,if=combo_points.deficit>=2+stealthed.all
 actions.cds+=/shuriken_tornado,if=spell_targets>=3&dot.nightblade.ticking&buff.symbols_of_death.up&buff.shadow_dance.up
 actions.cds+=/shadow_dance,if=!buff.shadow_dance.up&target.time_to_die<=5+talent.subterfuge.enabled
@@ -1320,14 +1343,15 @@ end
 
 APL[SPEC.SUBTLETY].stealth_cds = function(self)
 --[[
-actions.stealth_cds=variable,name=shd_threshold,value=cooldown.shadow_dance.chargesFractional()>=1.75
+# Helper Variable
+actions.stealth_cds=variable,name=shd_threshold,value=cooldown.shadow_dance.charges_fractional>=1.75
 # Vanish unless we are about to cap on Dance charges. Only when Find Weakness is about to run out.
 actions.stealth_cds+=/vanish,if=!variable.shd_threshold&debuff.find_weakness.remains<1
 # Pool for Shadowmeld + Shadowstrike unless we are about to cap on Dance charges. Only when Find Weakness is about to run out.
 actions.stealth_cds+=/pool_resource,for_next=1,extra_amount=40
 actions.stealth_cds+=/shadowmeld,if=energy>=40&energy.deficit>=10&!variable.shd_threshold&debuff.find_weakness.remains<1
 # With Dark Shadow only Dance when Nightblade will stay up. Use during Symbols or above threshold.
-actions.stealth_cds+=/shadow_dance,if=(!talent.dark_shadow.enabled|dot.nightblade.remains>=5+talent.subterfuge.enabled)&(variable.shd_threshold|buff.symbols_of_death.remains>=1.2|spell_targets>=4&cooldown.symbols_of_death.remains>10)
+actions.stealth_cds+=/shadow_dance,if=(!talent.dark_shadow.enabled|dot.nightblade.remains>=5+talent.subterfuge.enabled)&(variable.shd_threshold|buff.symbols_of_death.remains>=1.2|spell_targets.shuriken_storm>=4&cooldown.symbols_of_death.remains>10)
 actions.stealth_cds+=/shadow_dance,if=target.time_to_die<cooldown.symbols_of_death.remains
 ]]
 	var.shd_threshold = ShadowDance:chargesFractional() >= 1.75
@@ -1346,10 +1370,12 @@ end
 
 APL[SPEC.SUBTLETY].finish = function(self)
 --[[
+# Eviscerate gets highest priority at 5+ targets with Shadow Focus and Nights Vengeance up
+actions.finish=eviscerate,if=talent.shadow_focus.enabled&spell_targets.shuriken_storm>=5&buff.nights_vengeance.up
 # Keep up Nightblade if it is about to run out. Do not use NB during Dance, if talented into Dark Shadow.
-actions.finish=nightblade,if=(!talent.dark_shadow.enabled|!buff.shadow_dance.up)&target.time_to_die-remains>6&remains<tick_time*2&(spell_targets.shuriken_storm<4|!buff.symbols_of_death.up)
-# Multidotting outside Dance on targets that will live for the duration of Nightblade with refresh during pandemic.
-actions.finish+=/nightblade,cycle_targets=1,if=spell_targets.shuriken_storm>=2&!buff.shadow_dance.up&target.time_to_die>=(5+(2*combo_points))&refreshable
+actions.finish+=/nightblade,if=(!talent.dark_shadow.enabled|!buff.shadow_dance.up)&target.time_to_die-remains>6&remains<tick_time*2&(spell_targets.shuriken_storm<4|!buff.symbols_of_death.up)
+# Multidotting outside Dance on targets that will live for the duration of Nightblade with refresh during pandemic if you have less than 6 targets or play with Secret Technique.
+actions.finish+=/nightblade,cycle_targets=1,if=spell_targets.shuriken_storm>=2&(talent.secret_technique.enabled|azerite.nights_vengeance.enabled|spell_targets.shuriken_storm<=5)&!buff.shadow_dance.up&target.time_to_die>=(5+(2*combo_points))&refreshable
 # Refresh Nightblade early if it will expire during Symbols. Do that refresh if SoD gets ready in the next 5s.
 actions.finish+=/nightblade,if=remains<cooldown.symbols_of_death.remains+10&cooldown.symbols_of_death.remains<=5&target.time_to_die-remains>cooldown.symbols_of_death.remains+5
 # Secret Technique during Symbols. With Dark Shadow and multiple targets also only during Shadow Dance (until threshold in next line).
@@ -1358,11 +1384,14 @@ actions.finish+=/secret_technique,if=buff.symbols_of_death.up&(!talent.dark_shad
 actions.finish+=/secret_technique,if=spell_targets.shuriken_storm>=2+talent.dark_shadow.enabled+talent.nightstalker.enabled
 actions.finish+=/eviscerate
 ]]
+	if NightsVengeance.known and Eviscerate:usable() and ShadowFocus.known and Enemies() >= 5 and NightsVengeance:up() then
+		return Eviscerate
+	end
 	if Nightblade:usable() then
 		if (not DarkShadow.known or ShadowDance:down()) and (Target.timeToDie - Nightblade:remains()) > 6 and Nightblade:remains() < (Nightblade:tickTime() * 2) and (Enemies() < 4 or SymbolsOfDeath:down()) then
 			return Nightblade
 		end
-		if Enemies() >= 2 and Nightblade:refreshable() and ShadowDance:down() and Target.timeToDie >= (5 + (2 * ComboPoints())) then
+		if Enemies() >= 2 and (SecretTechnique.known or NightsVengeance.known or Enemies() <= 5) and Nightblade:refreshable() and ShadowDance:down() and Target.timeToDie >= (5 + (2 * ComboPoints())) then
 			return Nightblade
 		end
 		if Nightblade:remains() < (SymbolsOfDeath:cooldown() + 10) and SymbolsOfDeath:ready(5) and (Target.timeToDie - Nightblade:remains()) > (SymbolsOfDeath:cooldown() + 5) then
@@ -1384,10 +1413,15 @@ end
 
 APL[SPEC.SUBTLETY].build = function(self)
 --[[
-actions.build=shuriken_storm,if=spell_targets.shuriken_storm>=2
+# Shuriken Toss at 29+ Sharpened Blades stacks. Up to 3 targets per rank. Save for stealth if using Nightstalker or Dark Shadow when possible.
+actions.build=shuriken_toss,if=!talent.nightstalker.enabled&(!talent.dark_shadow.enabled|cooldown.symbols_of_death.remains>10)&buff.sharpened_blades.stack>=29&spell_targets.shuriken_storm<=(3*azerite.sharpened_blades.rank)
+actions.build+=/shuriken_storm,if=spell_targets>=2
 actions.build+=/gloomblade
 actions.build+=/backstab
 ]]
+	if SharpenedBlades.known and ShurikenToss:usable() and not Nightstalker.known and (not DarkShadow.known or SymbolsOfDeath:cooldown() > 10) and SharpenedBlades:stack() >= 29 and Enemies() <= (3 * SharpenedBlades:rank()) then
+		return ShurikenToss
+	end
 	if ShurikenStorm:usable() and Enemies() >= 2 then
 		return ShurikenStorm
 	end
@@ -1404,12 +1438,17 @@ end
 
 APL[SPEC.SUBTLETY].stealthed = function(self)
 --[[
+# If stealth is up, we really want to use Shadowstrike to benefits from the passive bonus, even if we are at max cp (from the precombat MfD).
 actions.stealthed=shadowstrike,if=buff.stealth.up
 # Finish at 4+ CP without DS, 5+ with DS, and 6 with DS after Vanish
 actions.stealthed+=/call_action_list,name=finish,if=combo_points.deficit<=1-(talent.deeper_stratagem.enabled&buff.vanish.up)
+# Shuriken Toss at 29+ Sharpened Blades stacks in Stealth for damage bonuses.
+actions.stealthed+=/shuriken_toss,if=buff.sharpened_blades.stack>=29
 # At 2 targets with Secret Technique keep up Find Weakness by cycling Shadowstrike.
 actions.stealthed+=/shadowstrike,cycle_targets=1,if=talent.secret_technique.enabled&talent.find_weakness.enabled&debuff.find_weakness.remains<1&spell_targets.shuriken_storm=2&target.time_to_die-remains>6
-actions.stealthed+=/shuriken_storm,if=spell_targets.shuriken_storm>=3
+# Without Deeper Stratagem and 3 Ranks of Blade in the Shadows it is worth using Shadowstrike on 3 targets.
+actions.stealthed+=/shadowstrike,if=!talent.deeper_stratagem.enabled&azerite.blade_in_the_shadows.rank=3&spell_targets.shuriken_storm=3
+actions.stealthed+=/shuriken_storm,if=spell_targets>=3
 actions.stealthed+=/shadowstrike
 ]]
 	if Stealth:up() and Shadowstrike:usable() then
@@ -1420,8 +1459,16 @@ actions.stealthed+=/shadowstrike
 		apl = self:finish()
 		if apl then return apl end
 	end
-	if SecretTechnique.known and FindWeakness.known and Enemies() == 2 and Shadowstrike:usable() and FindWeakness:remains() < 1 and (Target.timeToDie - Shadowstrike:remains()) > 6 then
-		return Shadowstrike
+	if SharpenedBlades.known and ShurikenToss:usable() and SharpenedBlades:stack() >= 29 then
+		return ShurikenToss
+	end
+	if Shadowstrike:usable() then
+		if SecretTechnique.known and FindWeakness.known and Enemies() == 2 and FindWeakness:remains() < 1 and (Target.timeToDie - Shadowstrike:remains()) > 6 then
+			return Shadowstrike
+		end
+		if BladeInTheShadows.known and not DeeperStratagem.known and Enemies() == 3 and BladeInTheShadows:azeriteRank() >= 3 then
+			return Shadowstrike
+		end
 	end
 	if ShurikenStorm:usable() and Enemies() >= 3 then
 		return ShurikenStorm
