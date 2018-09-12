@@ -799,9 +799,11 @@ end
 -- Inventory Items
 local FlaskOfTheSeventhDemon = InventoryItem.add(127848)
 FlaskOfTheSeventhDemon.buff = Ability.add(188033, true, true)
-local PotionOfProlongedPower = InventoryItem.add(142117)
-PotionOfProlongedPower.buff = Ability.add(229206, true, true)
-PotionOfProlongedPower.buff.triggers_gcd = false
+local FlaskOfTheCurrents = InventoryItem.add(152638)
+FlaskOfTheCurrents.buff = Ability.add(251836, true, true)
+local BattlePotionOfAgility = InventoryItem.add(163223)
+BattlePotionOfAgility.buff = Ability.add(279152, true, true)
+BattlePotionOfAgility.buff.triggers_gcd = false
 local RepurposedFelFocuser = InventoryItem.add(147707)
 RepurposedFelFocuser.buff = Ability.add(242551, true, true)
 -- End Inventory Items
@@ -1046,7 +1048,7 @@ local APL = {
 APL[SPEC.ASSASSINATION].main = function(self)
 	if TimeInCombat() == 0 then
 		if not InArenaOrBattleground() then
-			if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
+			if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not (FlaskOfTheSeventhDemon.buff:up() or FlaskOfTheCurrents.buff:up()) then
 				return RepurposedFelFocuser
 			end
 		end
@@ -1068,13 +1070,13 @@ APL[SPEC.ASSASSINATION].main = function(self)
 			return Stealth
 		end
 		if not InArenaOrBattleground() then
-			if Opt.pot and PotionOfProlongedPower:usable() then
-				UseCooldown(PotionOfProlongedPower)
+			if Opt.pot and BattlePotionOfAgility:usable() then
+				UseCooldown(BattlePotionOfAgility)
 			end
 		end
 	end
 	if not InArenaOrBattleground() then
-		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not FlaskOfTheSeventhDemon.buff:up() then
+		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not (FlaskOfTheSeventhDemon.buff:up() or FlaskOfTheCurrents.buff:up()) then
 			UseCooldown(RepurposedFelFocuser)
 		end
 	end
@@ -1155,8 +1157,8 @@ actions.build+=/mutilate
 end
 
 APL[SPEC.ASSASSINATION].cds = function(self)
-	if Opt.pot and PotionOfProlongedPower:usable() and (BloodlustActive() or Target.timeToDie <= 60 or Vendetta:up() and Vanish:ready(5)) then
-		return UseCooldown(PotionOfProlongedPower)
+	if Opt.pot and BattlePotionOfAgility:usable() and (BloodlustActive() or Target.timeToDie <= 60 or Vendetta:up() and Vanish:ready(5)) then
+		return UseCooldown(BattlePotionOfAgility)
 	end
 	if ArcaneTorrent:usable() and Envenom:down() and EnergyDeficit() >= 15 + var.energy_regen_combined * var.gcd_remains * 1.1 then
 		return UseCooldown(ArcaneTorrent)
@@ -1254,7 +1256,7 @@ end
 APL[SPEC.OUTLAW].main = function(self)
 	if TimeInCombat() == 0 then
 		if not InArenaOrBattleground() then
-			if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
+			if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not (FlaskOfTheSeventhDemon.buff:up() or FlaskOfTheCurrents.buff:up()) then
 				return RepurposedFelFocuser
 			end
 		end
@@ -1262,13 +1264,13 @@ APL[SPEC.OUTLAW].main = function(self)
 			return Stealth
 		end
 		if not InArenaOrBattleground() then
-			if Opt.pot and PotionOfProlongedPower:usable() then
-				UseCooldown(PotionOfProlongedPower)
+			if Opt.pot and BattlePotionOfAgility:usable() then
+				UseCooldown(BattlePotionOfAgility)
 			end
 		end
 	end
 	if not InArenaOrBattleground() then
-		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not FlaskOfTheSeventhDemon.buff:up() then
+		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not (FlaskOfTheSeventhDemon.buff:up() or FlaskOfTheCurrents.buff:up()) then
 			UseCooldown(RepurposedFelFocuser)
 		end
 	end
@@ -1277,7 +1279,7 @@ end
 APL[SPEC.SUBTLETY].main = function(self)
 	if TimeInCombat() == 0 then
 		if not InArenaOrBattleground() then
-			if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not FlaskOfTheSeventhDemon.buff:up() then
+			if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 300 and not (FlaskOfTheSeventhDemon.buff:up() or FlaskOfTheCurrents.buff:up()) then
 				return RepurposedFelFocuser
 			end
 		end
@@ -1285,13 +1287,13 @@ APL[SPEC.SUBTLETY].main = function(self)
 			return Stealth
 		end
 		if not InArenaOrBattleground() then
-			if Opt.pot and PotionOfProlongedPower:usable() then
-				UseCooldown(PotionOfProlongedPower)
+			if Opt.pot and BattlePotionOfAgility:usable() then
+				UseCooldown(BattlePotionOfAgility)
 			end
 		end
 	end
 	if not InArenaOrBattleground() then
-		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not FlaskOfTheSeventhDemon.buff:up() then
+		if RepurposedFelFocuser:usable() and RepurposedFelFocuser.buff:remains() < 30 and not (FlaskOfTheSeventhDemon.buff:up() or FlaskOfTheCurrents.buff:up()) then
 			UseCooldown(RepurposedFelFocuser)
 		end
 	end
@@ -1363,8 +1365,8 @@ actions.cds+=/shadow_blades,if=combo_points.deficit>=2+stealthed.all
 actions.cds+=/shuriken_tornado,if=spell_targets>=3&dot.nightblade.ticking&buff.symbols_of_death.up&buff.shadow_dance.up
 actions.cds+=/shadow_dance,if=!buff.shadow_dance.up&target.time_to_die<=5+talent.subterfuge.enabled
 ]]
-	if Opt.pot and PotionOfProlongedPower:usable() and (BloodlustActive() or Target.timeToDie <= 60 or (Vanish:up() and (ShadowBlades:up() or ShadowBlades:ready(30)))) then
-		return UseCooldown(PotionOfProlongedPower)
+	if Opt.pot and BattlePotionOfAgility:usable() and (BloodlustActive() or Target.timeToDie <= 60 or (Vanish:up() and (ShadowBlades:up() or ShadowBlades:ready(30)))) then
+		return UseCooldown(BattlePotionOfAgility)
 	end
 	if SymbolsOfDeath:usable() and Nightblade:up() then
 		return UseCooldown(SymbolsOfDeath)
@@ -2378,7 +2380,7 @@ function SlashCmdList.Assassin(msg, editbox)
 		if msg[2] then
 			Opt.pot = msg[2] == 'on'
 		end
-		return print('Assassin - Show Prolonged Power potions in cooldown UI: ' .. (Opt.pot and '|cFF00C000On' or '|cFFC00000Off'))
+		return print('Assassin - Show Battle potions in cooldown UI: ' .. (Opt.pot and '|cFF00C000On' or '|cFFC00000Off'))
 	end
 	if startsWith(msg[1], 'poison') then
 		if msg[2] then
@@ -2414,7 +2416,7 @@ function SlashCmdList.Assassin(msg, editbox)
 		'interrupt |cFF00C000on|r/|cFFC00000off|r - show an icon for interruptable spells',
 		'auto |cFF00C000on|r/|cFFC00000off|r  - automatically change target mode on AoE spells',
 		'ttl |cFFFFD000[seconds]|r  - time target exists in auto AoE after being hit (default is 10 seconds)',
-		'pot |cFF00C000on|r/|cFFC00000off|r - show Prolonged Power potions in cooldown UI',
+		'pot |cFF00C000on|r/|cFFC00000off|r - show Battle potions in cooldown UI',
 		'poisons |cFF00C000on|r/|cFFC00000off|r - show a reminder for poisons (5 minutes outside combat)',
 		'|cFFFFD000reset|r - reset the location of the Assassin UI to default',
 	} do
