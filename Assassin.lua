@@ -3,6 +3,14 @@ if select(2, UnitClass('player')) ~= 'ROGUE' then
 	return
 end
 
+-- copy heavily accessed global functions into local scope for performance
+local GetSpellCooldown = _G.GetSpellCooldown
+local GetSpellCharges = _G.GetSpellCharges
+local GetTime = _G.GetTime
+local UnitCastingInfo = _G.UnitCastingInfo
+local UnitAura = _G.UnitAura
+-- end copy global functions
+
 -- useful functions
 local function startsWith(str, start) -- case insensitive check to see if a string matches the start of another string
 	if type(str) ~= 'string' then
@@ -114,30 +122,6 @@ local var = {
 	gcd = 1.0
 }
 
-local targetModes = {
-	[SPEC.NONE] = {
-		{1, ''}
-	},
-	[SPEC.ASSASSINATION] = {
-		{1, ''},
-		{2, '2'},
-		{3, '3'},
-		{4, '4+'}
-	},
-	[SPEC.OUTLAW] = {
-		{1, ''},
-		{2, '2'},
-		{3, '3'},
-		{4, '4+'}
-	},
-	[SPEC.SUBTLETY] = {
-		{1, ''},
-		{2, '2'},
-		{3, '3'},
-		{4, '4+'}
-	}
-}
-
 local assassinPanel = CreateFrame('Frame', 'assassinPanel', UIParent)
 assassinPanel:SetPoint('CENTER', 0, -169)
 assassinPanel:SetFrameStrata('BACKGROUND')
@@ -232,6 +216,49 @@ assassinExtraPanel.border:SetTexture('Interface\\AddOns\\Assassin\\border.blp')
 
 -- Start Auto AoE
 
+local targetModes = {
+	[SPEC.NONE] = {
+		{1, ''}
+	},
+	[SPEC.ASSASSINATION] = {
+		{1, ''},
+		{2, '2'},
+		{3, '3'},
+		{4, '4+'}
+	},
+	[SPEC.OUTLAW] = {
+		{1, ''},
+		{2, '2'},
+		{3, '3'},
+		{4, '4+'}
+	},
+	[SPEC.SUBTLETY] = {
+		{1, ''},
+		{2, '2'},
+		{3, '3'},
+		{4, '4+'}
+	}
+}
+
+local function SetTargetMode(mode)
+	targetMode = min(mode, #targetModes[currentSpec])
+	amagicPanel.targets:SetText(targetModes[currentSpec][targetMode][2])
+end
+Assassin_SetTargetMode = SetTargetMode
+
+function ToggleTargetMode()
+	local mode = targetMode + 1
+	SetTargetMode(mode > #targetModes[currentSpec] and 1 or mode)
+end
+Assassin_ToggleTargetMode = ToggleTargetMode
+
+local function ToggleTargetModeReverse()
+	local mode = targetMode - 1
+	SetTargetMode(mode < 1 and #targetModes[currentSpec] or mode)
+end
+Assassin_ToggleTargetModeReverse = ToggleTargetModeReverse
+
+
 local autoAoe = {
 	abilities = {},
 	targets = {}
@@ -243,12 +270,12 @@ function autoAoe:update()
 		count = count + 1
 	end
 	if count <= 1 then
-		Assassin_SetTargetMode(1)
+		SetTargetMode(1)
 		return
 	end
 	for i = #targetModes[currentSpec], 1, -1 do
 		if count >= targetModes[currentSpec][i][1] then
-			Assassin_SetTargetMode(i)
+			SetTargetMode(i)
 			return
 		end
 	end
@@ -995,7 +1022,7 @@ Rupture.tickingPoisoned = TickingPoisoned
 -- End Ability Modifications
 
 local function UpdateVars()
-	local _, start, duration, remains, hp, hp_lost, spellId
+	local _, start, duration, remains, spellId
 	var.last_main = var.main
 	var.last_cd = var.cd
 	var.last_extra = var.extra
@@ -1013,13 +1040,13 @@ local function UpdateVars()
 	var.energy = min(var.energy_max, floor(UnitPower('player', 3) + (var.energy_regen * var.execute_remains)))
 	var.cp_max = UnitPowerMax('player', 4)
 	var.cp = UnitPower('player', 4)
-	hp = UnitHealth('target')
+	Target.health = UnitHealth('target')
 	table.remove(Target.healthArray, 1)
-	Target.healthArray[#Target.healthArray + 1] = hp
-	Target.timeToDieMax = hp / UnitHealthMax('player') * 5
-	Target.healthPercentage = Target.guid == 0 and 100 or (hp / UnitHealthMax('target') * 100)
-	hp_lost = Target.healthArray[1] - hp
-	Target.timeToDie = hp_lost > 0 and min(Target.timeToDieMax, hp / (hp_lost / 3)) or Target.timeToDieMax
+	Target.healthArray[#Target.healthArray + 1] = Target.health
+	Target.timeToDieMax = Target.health / UnitHealthMax('player') * 5
+	Target.healthPercentage = Target.healthMax > 0 and (Target.health / Target.healthMax * 100) or 100
+	Target.healthLostPerSec = (Target.healthArray[1] - Target.health) / 3
+	Target.timeToDie = Target.healthLostPerSec > 0 and min(Target.timeToDieMax, (Target.health - (Target.healthLostPerSec * var.execute_remains) / Target.healthLostPerSec)) or Target.timeToDieMax
 end
 
 local function UseCooldown(ability, overwrite, always)
@@ -1682,21 +1709,6 @@ local function Disappear()
 	UpdateGlows()
 end
 
-function Assassin_ToggleTargetMode()
-	local mode = targetMode + 1
-	Assassin_SetTargetMode(mode > #targetModes[currentSpec] and 1 or mode)
-end
-
-function Assassin_ToggleTargetModeReverse()
-	local mode = targetMode - 1
-	Assassin_SetTargetMode(mode < 1 and #targetModes[currentSpec] or mode)
-end
-
-function Assassin_SetTargetMode(mode)
-	targetMode = min(mode, #targetModes[currentSpec])
-	assassinPanel.targets:SetText(targetModes[currentSpec][targetMode][2])
-end
-
 function Equipped(name, slot)
 	local function SlotMatches(name, slot)
 		local ilink = GetInventoryItemLink('player', slot)
@@ -1911,6 +1923,7 @@ function events:ADDON_LOADED(name)
 			print('[|cFFFFD000Warning|r] Assassin is not designed for players under level 110, and almost certainly will not operate properly!')
 		end
 		InitializeVariables()
+		Azerite:initialize()
 		UpdateHealthArray()
 		UpdateDraggable()
 		UpdateAlpha()
@@ -1920,7 +1933,6 @@ function events:ADDON_LOADED(name)
 		assassinCooldownPanel:SetScale(Opt.scale.cooldown)
 		assassinInterruptPanel:SetScale(Opt.scale.interrupt)
 		assassinExtraPanel:SetScale(Opt.scale.extra)
-		Azerite:initialize()
 	end
 end
 
@@ -1958,7 +1970,7 @@ function events:COMBAT_LOG_EVENT_UNFILTERED()
 			table.insert(PreviousGCD, 1, castedAbility)
 		end
 		if Opt.auto_aoe and castedAbility == Backstab then
-			Assassin_SetTargetMode(1)
+			SetTargetMode(1)
 		end
 		if Opt.previous and assassinPanel:IsVisible() then
 			assassinPreviousPanel.ability = castedAbility
@@ -1995,6 +2007,7 @@ local function UpdateTargetInfo()
 		Target.guid = nil
 		Target.boss = false
 		Target.hostile = true
+		Target.healthMax = 0
 		local i
 		for i = 1, #Target.healthArray do
 			Target.healthArray[i] = 0
@@ -2003,6 +2016,9 @@ local function UpdateTargetInfo()
 			UpdateCombat()
 			assassinPanel:Show()
 			return true
+		end
+		if Opt.previous and combatStartTime == 0 then
+			amagicPreviousPanel:Hide()
 		end
 		return
 	end
@@ -2014,6 +2030,7 @@ local function UpdateTargetInfo()
 		end
 	end
 	Target.level = UnitLevel('target')
+	Target.healthMax = UnitHealthMax('target')
 	if UnitIsPlayer('target') then
 		Target.boss = false
 	elseif Target.level == -1 then
@@ -2065,7 +2082,7 @@ function events:PLAYER_REGEN_ENABLED()
 		for guid in next, autoAoe.targets do
 			autoAoe.targets[guid] = nil
 		end
-		Assassin_SetTargetMode(1)
+		SetTargetMode(1)
 	end
 	if var.last_ability then
 		var.last_ability = nil
@@ -2100,7 +2117,7 @@ function events:PLAYER_SPECIALIZATION_CHANGED(unitName)
 		if currentSpec == SPEC.SUBTLETY then
 			var.stealth_threshold = 60 + (Vigor.known and 35 or 0) + (MasterOfShadows.known and 10 or 0)
 		end
-		Assassin_SetTargetMode(1)
+		SetTargetMode(1)
 		UpdateTargetInfo()
 	end
 end
@@ -2121,11 +2138,11 @@ end
 assassinPanel.button:SetScript('OnClick', function(self, button, down)
 	if down then
 		if button == 'LeftButton' then
-			Assassin_ToggleTargetMode()
+			ToggleTargetMode()
 		elseif button == 'RightButton' then
-			Assassin_ToggleTargetModeReverse()
+			ToggleTargetModeReverse()
 		elseif button == 'MiddleButton' then
-			Assassin_SetTargetMode(1)
+			SetTargetMode(1)
 		end
 	end
 end)
@@ -2327,7 +2344,7 @@ function SlashCmdList.Assassin(msg, editbox)
 	if msg[1] == 'aoe' then
 		if msg[2] then
 			Opt.aoe = msg[2] == 'on'
-			Assassin_SetTargetMode(1)
+			SetTargetMode(1)
 			UpdateDraggable()
 		end
 		return print('Assassin - Allow clicking main ability icon to toggle amount of targets (disables moving): ' .. (Opt.aoe and '|cFF00C000On' or '|cFFC00000Off'))
