@@ -14,7 +14,10 @@
 	<Binding name="Set Targets to 3">
 		Assassin_SetTargetMode(3)
 	</Binding>
-	<Binding name="Set Targets to 4+">
+	<Binding name="Set Targets to 4">
 		Assassin_SetTargetMode(4)
+	</Binding>
+	<Binding name="Set Targets to 5+">
+		Assassin_SetTargetMode(5)
 	</Binding>
 </Bindings>
