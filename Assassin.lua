@@ -753,9 +753,25 @@ end
 
 -- Rogue Abilities
 ---- Multiple Specializations
+local CheapShot = Ability:Add(1833, false, true)
+CheapShot.buff_duration = 4
+CheapShot.energy_cost = 40
+CheapShot.requires_stealth = true
+local CrimsonVial = Ability:Add(185311, true, true)
+CrimsonVial.buff_duration = 4
+CrimsonVial.cooldown_duration = 30
+CrimsonVial.energy_cost = 20
+local Gouge = Ability:Add(1776, false, true)
+Gouge.buff_duration = 4
+Gouge.cooldown_duration = 15
+Gouge.energy_cost = 25
 local Kick = Ability:Add(1766, false, true)
 Kick.cooldown_duration = 15
 Kick.triggers_gcd = false
+local KidneyShot = Ability:Add(408, false, true)
+KidneyShot.buff_duration = 1
+KidneyShot.energy_cost = 25
+KidneyShot.cp_cost = 1
 local Rupture = Ability:Add(1943, false, true)
 Rupture.buff_duration = 4
 Rupture.energy_cost = 25
@@ -763,6 +779,9 @@ Rupture.cp_cost = 1
 Rupture.tick_interval = 2
 Rupture.hasted_ticks = true
 Rupture:TrackAuras()
+local Shiv = Ability:Add(5938, false, true)
+Shiv.cooldown_duration = 25
+Shiv.energy_cost = 20
 local SliceAndDice = Ability:Add(315496, true, true)
 SliceAndDice.buff_duration = 6
 SliceAndDice.energy_cost = 25
@@ -776,6 +795,7 @@ local Alacrity = Ability:Add(193539, true, true)
 Alacrity.buff_duration = 20
 local Anticipation = Ability:Add(114015, false, true)
 local DeeperStratagem = Ability:Add(193531, false, true)
+local DirtyTricks = Ability:Add(108216, false, true)
 local MarkedForDeath = Ability:Add(137619, false, true)
 MarkedForDeath.cooldown_duration = 60
 MarkedForDeath.triggers_gcd = false
@@ -790,19 +810,16 @@ Envenom.energy_cost = 25
 Envenom.cp_cost = 1
 local FanOfKnives = Ability:Add(51723, false, true)
 FanOfKnives.energy_cost = 35
-FanOfKnives.cp_cost = -1
 FanOfKnives:AutoAoe(true)
 local Garrote = Ability:Add(703, false, true)
 Garrote.buff_duration = 18
 Garrote.cooldown_duration = 15
 Garrote.energy_cost = 45
-Garrote.cp_cost = -1
 Garrote.tick_interval = 2
 Garrote.hasted_ticks = true
 Garrote:TrackAuras()
 local Mutilate = Ability:Add(1329, false, true)
 Mutilate.energy_cost = 55
-Mutilate.cp_cost = -2
 local SurgeOfToxins = Ability:Add(192425, false, true)
 SurgeOfToxins.buff_duration = 5
 local Vendetta = Ability:Add(79140, false, true)
@@ -840,26 +857,73 @@ Exsanguinate.energy_cost = 25
 local Hemorrhage = Ability:Add(16511, false, true)
 Hemorrhage.buff_duration = 20
 Hemorrhage.energy_cost = 30
-Hemorrhage.cp_cost = -1
 local MasterPoisoner = Ability:Add(196864, false, true)
 local ToxicBlade = Ability:Add(245388, false, true, 245389)
 ToxicBlade.buff_duration = 9
 ToxicBlade.cooldown_duration = 25
 ToxicBlade.energy_cost = 20
-ToxicBlade.cp_cost = -1
 local VenomRush = Ability:Add(152152, false, true)
 ------ Procs
 
 ---- Outlaw
-
+local AdrenalineRush = Ability:Add(13750, true, true)
+AdrenalineRush.buff_duration = 20
+AdrenalineRush.cooldown_duration = 180
+local Ambush = Ability:Add(8676, false, true)
+Ambush.energy_cost = 50
+Ambush.requires_stealth = true
+local BetweenTheEyes = Ability:Add(315341, false, true)
+BetweenTheEyes.cooldown_duration = 45
+BetweenTheEyes.energy_cost = 25
+BetweenTheEyes.cp_cost = 1
+local BladeFlurry = Ability:Add(13877, true, true)
+BladeFlurry.cooldown_duration = 30
+BladeFlurry.buff_duration = 12
+local Dispatch = Ability:Add(2098, false, true)
+Dispatch.energy_cost = 35
+Dispatch.cp_cost = 1
+local PistolShot = Ability:Add(185763, false, true)
+PistolShot.energy_cost = 40
+local RollTheBones = Ability:Add(315508, false, true)
+RollTheBones.cooldown_duration = 45
+RollTheBones.energy_cost = 25
+local SinisterStrike = Ability:Add(193315, false, true)
+SinisterStrike.energy_cost = 45
 ------ Talents
-
+local BladeRush = Ability:Add(271877, false, true)
+BladeRush.cooldown_duration = 45
+BladeRush:AutoAoe()
+local Dreadblades = Ability:Add(343142, false, true)
+Dreadblades.buff_duration = 10
+Dreadblades.cooldown_duration = 90
+Dreadblades.energy_cost = 30
+Dreadblades.auraTarget = 'player'
+local GhostlyStrike = Ability:Add(196937, false, true)
+GhostlyStrike.buff_duration = 10
+GhostlyStrike.cooldown_duration = 35
+GhostlyStrike.energy_cost = 30
+local KillingSpree = Ability:Add(51690, false, true)
+KillingSpree.cooldown_duration = 120
+KillingSpree:AutoAoe()
+local QuickDraw = Ability:Add(196938, true, true)
 ------ Procs
-
+local Broadside = Ability:Add(193356, true, true) -- Roll the Bones
+Broadside.buff_duration = 30
+local BuriedTreasure = Ability:Add(199600, true, true) -- Roll the Bones
+BuriedTreasure.buff_duration = 30
+local GrandMelee = Ability:Add(193358, true, true) -- Roll the Bones
+GrandMelee.buff_duration = 30
+local Opportunity = Ability:Add(195627, true, true)
+Opportunity.buff_duration = 10
+local RuthlessPrecision = Ability:Add(193357, true, true) -- Roll the Bones
+RuthlessPrecision.buff_duration = 30
+local SkullAndCrossbones = Ability:Add(199603, true, true) -- Roll the Bones
+SkullAndCrossbones.buff_duration = 30
+local TrueBearing = Ability:Add(193359, true, true) -- Roll the Bones
+TrueBearing.buff_duration = 30
 ---- Subtlety
 local Backstab = Ability:Add(53, false, true)
 Backstab.energy_cost = 35
-Backstab.cp_cost = -1
 local BlackPowder = Ability:Add(319175, false, true)
 BlackPowder.energy_cost = 35
 BlackPowder.cp_cost = 1
@@ -877,21 +941,18 @@ ShadowDance.requires_charge = true
 ShadowDance.triggers_gcd = false
 local Shadowstrike = Ability:Add(185438, false, true)
 Shadowstrike.energy_cost = 40
-Shadowstrike.cp_cost = -2
+Shadowstrike.requires_stealth = true
 local ShurikenStorm = Ability:Add(197835, false, true)
 ShurikenStorm.energy_cost = 35
-ShurikenStorm.cp_cost = -2
 ShurikenStorm:AutoAoe(true)
 local ShurikenToss = Ability:Add(114014, false, true)
 ShurikenToss.energy_cost = 40
-ShurikenToss.cp_cost = -1
 local SymbolsOfDeath = Ability:Add(212283, true, true)
 SymbolsOfDeath.buff_duration = 10
 SymbolsOfDeath.cooldown_duration = 30
 ------ Talents
 local Gloomblade = Ability:Add(200758, false, true)
 Gloomblade.energy_cost = 35
-Gloomblade.cp_cost = -1
 local DarkShadow = Ability:Add(245687, false, true)
 local FindWeakness = Ability:Add(91023, false, true, 91021)
 FindWeakness.buff_duration = 10
@@ -907,15 +968,42 @@ ShurikenTornado.cooldown_duration = 60
 ShurikenTornado.tick_interval = 1
 ShurikenTornado:AutoAoe(true)
 -- Covenant abilities
+local EchoingReprimand = Ability:Add(323547, true, true) -- Kyrian
+EchoingReprimand.cooldown_duration = 45
+EchoingReprimand.buff_duration = 45
+EchoingReprimand.energy_cost = 10
+local Flagellation = Ability:Add(323654, true, true) -- Venthyr
+Flagellation.buff_duration = 20
+Flagellation.cooldown_duration = 90
+Flagellation.energy_cost = 20
 local Sepsis = Ability:Add(328305, false, true) -- Night Fae
 Sepsis.cooldown_duration = 90
 Sepsis.energy_cost = 25
 Sepsis.buff = Ability:Add(347037, true, true)
 Sepsis.buff.buff_duration = 5
+local SerratedBoneSpike = Ability:Add(328547, false, true) -- Necrolord
+SerratedBoneSpike.buff_duration = 600
+SerratedBoneSpike.cooldown_duration = 30
+SerratedBoneSpike.energy_cost = 15
+SerratedBoneSpike.requires_charge = true
 -- Soulbind conduits
-
+local CountTheOdds = Ability:Add(341546, true, true)
+CountTheOdds.conduit_id = 244
 -- Legendary effects
-
+local ConcealedBlunderbus = Ability:Add(340088, false, true, 340587)
+ConcealedBlunderbus.buff_duration = 10
+ConcealedBlunderbus.bonus_id = 7122
+local DeathlyShadows = Ability:Add(340092, true, true, 341202)
+DeathlyShadows.buff_duration = 12
+DeathlyShadows.bonus_id = 7126
+local GreenskinsWickers = Ability:Add(340085, true, true, 340573)
+GreenskinsWickers.buff_duration = 15
+GreenskinsWickers.bonus_id = 7119
+local MarkOfTheMasterAssassin = Ability:Add(340076, true, true, 340094)
+MarkOfTheMasterAssassin.buff_duration = 4
+MarkOfTheMasterAssassin.bonus_id = 7111
+local TinyToxicBlade = Ability:Add(340078, true, true)
+TinyToxicBlade.bonus_id = 7112
 -- PvP talents
 
 -- Racials
@@ -1114,7 +1202,6 @@ function Player:InArenaOrBattleground()
 end
 
 function Player:UpdateAbilities()
-	self.energy_max = UnitPowerMax('player', 3)
 	self.combo_points_max = UnitPowerMax('player', 4)
 
 	local _, ability, spellId
@@ -1138,8 +1225,14 @@ function Player:UpdateAbilities()
 			ability.known = C_Soulbinds.IsConduitInstalledInSoulbind(C_Soulbinds.GetActiveSoulbindID(), ability.conduit_id)
 		end
 	end
-	
+
 	Sepsis.buff.known = Sepsis.known
+	Broadside.known = RollTheBones.known
+	BuriedTreasure.known = RollTheBones.known
+	GrandMelee.known = RollTheBones.known
+	RuthlessPrecision.known = RollTheBones.known
+	SkullAndCrossbones.known = RollTheBones.known
+	TrueBearing.known = RollTheBones.known
 
 	abilities.bySpellId = {}
 	abilities.velocity = {}
@@ -1250,6 +1343,14 @@ function Ability:EnergyCost()
 	return cost
 end
 
+function CheapShot:EnergyCost()
+	if DirtyTricks.known then
+		return 0
+	end
+	return Ability.EnergyCost(self)
+end
+Gouge.EnergyCost = CheapShot.EnergyCost
+
 function Envenom:Duration()
 	return self.buff_duration + Player.combo_points
 end
@@ -1286,6 +1387,52 @@ end
 
 Garrote.TickingPoisoned = TickingPoisoned
 Rupture.TickingPoisoned = TickingPoisoned
+
+function PistolShot:EnergyCost()
+	local cost = Ability.EnergyCost(self)
+	if Opportunity:Up() then
+		cost = cost * 0.50
+	end
+	return cost
+end
+
+function Shiv:EnergyCost()
+	if TinyToxicBlade.known then
+		return 0
+	end
+	return Ability.EnergyCost(self)
+end
+
+function EchoingReprimand:ActiveBuff()
+	local _, i, id
+	for i = 1, 40 do
+		_, _, _, _, _, _, _, _, _, id = UnitAura('player', i, 'HELPFUL')
+		if not id then
+			return
+		elseif id == 323558 then
+			return id, 2
+		elseif id == 323559 then
+			return id, 3
+		elseif id == 323560 then
+			return id, 4
+		end
+	end
+end
+
+function EchoingReprimand:Remains()
+	self.spellId2, self.animaCharged = self:ActiveBuff()
+	return Ability.Remains(self)
+end
+
+function EchoingReprimand:AnimaCharged()
+	if self:Up() then
+		return self.animaCharged
+	end
+end
+
+function RollTheBones:Stack()
+	return (Broadside:Up() and 1 or 0) + (BuriedTreasure:Up() and 1 or 0) + (GrandMelee:Up() and 1 or 0) + (RuthlessPrecision:Up() and 1 or 0) + (SkullAndCrossbones:Up() and 1 or 0) + (TrueBearing:Up() and 1 or 0)
+end
 
 -- End Ability Modifications
 
@@ -2153,6 +2300,7 @@ function UI:UpdateCombat()
 	Player.health = UnitHealth('player')
 	Player.health_max = UnitHealthMax('player')
 	Player.energy_regen = GetPowerRegen()
+	Player.energy_max = UnitPowerMax('player', 3)
 	Player.energy = UnitPower('player', 3) + (Player.energy_regen * Player.execute_remains)
 	Player.energy = min(max(Player.energy, 0), Player.energy_max)
 	Player.combo_points = UnitPower('player', 4)
