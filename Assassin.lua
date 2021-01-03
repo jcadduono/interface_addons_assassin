@@ -141,8 +141,8 @@ local Player = {
 	last_swing_taken = 0,
 	previous_gcd = {},-- list of previous GCD abilities
 	item_use_blacklist = { -- list of item IDs with on-use effects we should mark unusable
-		[174044] = true, -- Humming Black Dragonscale (parachute)
 	},
+	main_freecast = false,
 }
 
 -- current target information
@@ -1062,8 +1062,8 @@ function Player:BloodlustActive()
 		if not id then
 			return false
 		elseif (
-			id == 2825 or   -- Bloodlust (Horde Rogue)
-			id == 32182 or  -- Heroism (Alliance Rogue)
+			id == 2825 or   -- Bloodlust (Horde Shaman)
+			id == 32182 or  -- Heroism (Alliance Shaman)
 			id == 80353 or  -- Time Warp (Mage)
 			id == 90355 or  -- Ancient Hysteria (Hunter Pet - Core Hound)
 			id == 160452 or -- Netherwinds (Hunter Pet - Nether Ray)
@@ -2120,6 +2120,15 @@ function UI:UpdateDisplay()
 			dim = Opt.dimmer
 		end
 	end
+	if Player.main and Player.main_freecast then
+		if not assassinPanel.freeCastOverlayOn then
+			assassinPanel.freeCastOverlayOn = true
+			assassinPanel.border:SetTexture(ADDON_PATH .. 'freecast.blp')
+		end
+	elseif assassinPanel.freeCastOverlayOn then
+		assassinPanel.freeCastOverlayOn = false
+		assassinPanel.border:SetTexture(ADDON_PATH .. 'border.blp')
+	end
 	assassinPanel.dimmer:SetShown(dim)
 	assassinPanel.text.center:SetText(text_center)
 	--assassinPanel.text.bl:SetText(format('%.1fs', Target.timeToDie))
@@ -2164,6 +2173,7 @@ function UI:UpdateCombat()
 	Player.main = APL[Player.spec]:main()
 	if Player.main then
 		assassinPanel.icon:SetTexture(Player.main.icon)
+		Player.main_freecast = Player.main.energy_cost > 0 and Player.main:EnergyCost() == 0
 	end
 	if Player.cd then
 		assassinCooldownPanel.icon:SetTexture(Player.cd.icon)
@@ -2553,7 +2563,7 @@ SlashCmdList[ADDON] = function(msg, editbox)
 				Opt.snap = 'below'
 			else
 				Opt.snap = false
-				doomedPanel:ClearAllPoints()
+				assassinPanel:ClearAllPoints()
 			end
 			UI.OnResourceFrameShow()
 		end
