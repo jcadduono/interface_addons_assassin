@@ -1449,18 +1449,7 @@ function RollTheBones:Stack()
 end
 
 function RollTheBones:Remains()
-	local remains = Broadside:Remains()
-	if remains > 0 then return remains end
-	remains = BuriedTreasure:Remains()
-	if remains > 0 then return remains end
-	remains = GrandMelee:Remains()
-	if remains > 0 then return remains end
-	remains = RuthlessPrecision:Remains()
-	if remains > 0 then return remains end
-	remains = SkullAndCrossbones:Remains()
-	if remains > 0 then return remains end
-	remains = TrueBearing:Remains()
-	return remains
+	return max(Broadside:Remains(), BuriedTreasure:Remains(), GrandMelee:Remains(), RuthlessPrecision:Remains(), SkullAndCrossbones:Remains(), TrueBearing:Remains())
 end
 
 function Shadowmeld:Usable()
