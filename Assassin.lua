@@ -975,6 +975,9 @@ local EchoingReprimand = Ability:Add(323547, true, true) -- Kyrian
 EchoingReprimand.cooldown_duration = 45
 EchoingReprimand.buff_duration = 45
 EchoingReprimand.energy_cost = 10
+EchoingReprimand[2] = Ability:Add(323558, true, true)
+EchoingReprimand[3] = Ability:Add(323559, true, true)
+EchoingReprimand[4] = Ability:Add(323560, true, true)
 local Flagellation = Ability:Add(323654, true, true) -- Venthyr
 Flagellation.buff_duration = 20
 Flagellation.cooldown_duration = 90
@@ -1237,6 +1240,9 @@ function Player:UpdateAbilities()
 	SkullAndCrossbones.known = RollTheBones.known
 	TrueBearing.known = RollTheBones.known
 	BladeFlurry.cleave.known = BladeFlurry.known
+	EchoingReprimand[2].known = EchoingReprimand.known
+	EchoingReprimand[3].known = EchoingReprimand.known
+	EchoingReprimand[4].known = EchoingReprimand.known
 
 	abilities.bySpellId = {}
 	abilities.velocity = {}
@@ -1416,32 +1422,11 @@ function Shiv:EnergyCost()
 	return Ability.EnergyCost(self)
 end
 
-function EchoingReprimand:ActiveBuff()
-	local _, i, id
-	for i = 1, 40 do
-		_, _, _, _, _, _, _, _, _, id = UnitAura('player', i, 'HELPFUL')
-		if not id then
-			return
-		elseif id == 323558 then
-			return id, 2
-		elseif id == 323559 then
-			return id, 3
-		elseif id == 323560 then
-			return id, 4
-		end
-	end
-end
-
 function EchoingReprimand:Remains()
-	self.spellId2, self.animaCharged = self:ActiveBuff()
-	return Ability.Remains(self)
-end
-
-function EchoingReprimand:AnimaCharged()
-	if self:Up() then
-		return self.animaCharged
+	if self.animaCharged and self.animaCharged > 0 and self[self.animaCharged] then
+		Ability.Remains(self[self.animaCharged])
 	end
-	return -1
+	return 0
 end
 
 function RollTheBones:Stack()
@@ -1710,7 +1695,7 @@ actions.precombat+=/stealth
 		if MarkedForDeath:Usable() and Player:ComboPoints() < 3 then
 			UseCooldown(MarkedForDeath)
 		end
-		if SliceAndDice:Usable() and SliceAndDice:Remains() < (4 * Player:ComboPoints()) and Player:ComboPoints() >= 2 then
+		if SliceAndDice:Usable() and SliceAndDice:Remains() < (4 * Player:ComboPoints()) and Player:ComboPoints() >= 2 and Target.timeToDie > SliceAndDice:Remains() then
 			return SliceAndDice
 		end
 		if RollTheBones:Usable() and Player.rtb_reroll then
@@ -1744,7 +1729,7 @@ actions+=/bag_of_tricks
 		return self:stealth()
 	end
 	self:cds()
-	if Player:ComboPoints() >= (Player:ComboPointsMaxSpend() - (Broadside:Up() and 1 or 0) - (QuickDraw.known and Opportunity:Up() and 1 or 0)) or (EchoingReprimand.known and Player:ComboPoints() == EchoingReprimand:AnimaCharged()) then
+	if Player:ComboPoints() >= (Player:ComboPointsMaxSpend() - (Broadside:Up() and 1 or 0) - (QuickDraw.known and Opportunity:Up() and 1 or 0)) or (EchoingReprimand.known and Player:ComboPoints() == EchoingReprimand.animaCharged) then
 		return self:finish()
 	end
 	return self:build()
@@ -2636,7 +2621,6 @@ function events:COMBAT_LOG_EVENT_UNFILTERED()
 	   eventType == 'SPELL_CAST_START' or
 	   eventType == 'SPELL_CAST_SUCCESS' or
 	   eventType == 'SPELL_CAST_FAILED' or
-	   eventType == 'SPELL_AURA_REMOVED' or
 	   eventType == 'SPELL_DAMAGE' or
 	   eventType == 'SPELL_ABSORBED' or
 	   eventType == 'SPELL_PERIODIC_DAMAGE' or
@@ -2668,8 +2652,16 @@ function events:COMBAT_LOG_EVENT_UNFILTERED()
 		end
 		return
 	end
-
 	if dstGUID == Player.guid then
+		if EchoingReprimand.known then
+			if ability == EchoingReprimand[2] then
+				EchoingReprimand.animaCharged = eventType == 'SPELL_AURA_REMOVED' and -1 or 2
+			elseif ability == EchoingReprimand[3] then
+				EchoingReprimand.animaCharged = eventType == 'SPELL_AURA_REMOVED' and -1 or 3
+			elseif ability == EchoingReprimand[4] then
+				EchoingReprimand.animaCharged = eventType == 'SPELL_AURA_REMOVED' and -1 or 4
+			end
+		end
 		return -- ignore buffs beyond here
 	end
 	if ability.aura_targets then
@@ -2807,6 +2799,19 @@ end
 function events:UNIT_POWER_UPDATE(srcName, powerType)
 	if srcName == 'player' and powerType == 'COMBO_POINTS' then
 		UI:UpdateCombatWithin(0.05)
+	end
+end
+
+function events:UNIT_SPELLCAST_SENT(srcName, destName, castId, spellId)
+	if srcName ~= 'player' or not EchoingReprimand.known then
+		return
+	end
+	local ability = abilities.bySpellId[spellId]
+	if not ability then
+		return
+	end
+	if ability.cp_cost > 0 and EchoingReprimand.animaCharged == UnitPower('player', 4) then
+		EchoingReprimand.animaCharged = -1
 	end
 end
 
