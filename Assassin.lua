@@ -1423,11 +1423,36 @@ function Shiv:EnergyCost()
 end
 
 function EchoingReprimand:Remains()
-	if self.animaCharged and self.animaCharged > 0 and self[self.animaCharged] then
-		Ability.Remains(self[self.animaCharged])
+	local i, remains
+	for i = 2, 4 do
+		remains = self[i]:Remains()
+		if remains > 0 then
+			return remains
+		end
 	end
 	return 0
 end
+
+function EchoingReprimand:AnimaCharged(cp)
+	if cp then
+		return EchoingReprimand[cp] and EchoingReprimand[cp]:Up() and cp or nil
+	end
+	local i
+	for i = 2, 4 do
+		if self[i]:Up() then
+			return i
+		end
+	end
+end
+
+EchoingReprimand[2].Remains = function(self)
+	if EchoingReprimand.use_time and Player.time - EchoingReprimand.use_time < 2 then
+		return 0 -- BUG: the buff remains for a second or so after it is consumed
+	end
+	return Ability.Remains(self)
+end
+EchoingReprimand[3].Remains = EchoingReprimand[2].Remains
+EchoingReprimand[4].Remains = EchoingReprimand[2].Remains
 
 function RollTheBones:Stack()
 	return (Broadside:Up() and 1 or 0) + (BuriedTreasure:Up() and 1 or 0) + (GrandMelee:Up() and 1 or 0) + (RuthlessPrecision:Up() and 1 or 0) + (SkullAndCrossbones:Up() and 1 or 0) + (TrueBearing:Up() and 1 or 0)
@@ -1729,7 +1754,7 @@ actions+=/bag_of_tricks
 		return self:stealth()
 	end
 	self:cds()
-	if Player:ComboPoints() >= (Player:ComboPointsMaxSpend() - (Broadside:Up() and 1 or 0) - (QuickDraw.known and Opportunity:Up() and 1 or 0)) or (EchoingReprimand.known and Player:ComboPoints() == EchoingReprimand.animaCharged) then
+	if Player:ComboPoints() >= (Player:ComboPointsMaxSpend() - (Broadside:Up() and 1 or 0) - (QuickDraw.known and Opportunity:Up() and 1 or 0)) or (EchoingReprimand.known and Player.anima_charged_cp == Player:ComboPoints()) then
 		return self:finish()
 	end
 	return self:build()
@@ -2454,7 +2479,7 @@ end
 
 function UI:UpdateDisplay()
 	timer.display = 0
-	local dim, text_center
+	local dim, text_center, text_tr
 	if Opt.dimmer then
 		dim = not ((not Player.main) or
 		           (Player.main.spellId and IsUsableSpell(Player.main.spellId)) or
@@ -2478,6 +2503,7 @@ function UI:UpdateDisplay()
 	end
 	assassinPanel.dimmer:SetShown(dim)
 	assassinPanel.text.center:SetText(text_center)
+	assassinPanel.text.tl:SetText(Player.anima_charged_cp)
 	--assassinPanel.text.bl:SetText(format('%.1fs', Target.timeToDie))
 end
 
@@ -2508,6 +2534,7 @@ function UI:UpdateCombat()
 	Player.moving = speed ~= 0
 	Player.movement_speed = max_speed / 7 * 100
 	Player.stealthed = Stealth:Up() or Vanish:Up() or (ShadowDance.known and ShadowDance:Up()) or (Sepsis.known and Sepsis.buff:Up())
+	Player.anima_charged_cp = EchoingReprimand.known and EchoingReprimand:AnimaCharged() or nil
 
 	trackAuras:Purge()
 	if Opt.auto_aoe then
@@ -2653,15 +2680,6 @@ function events:COMBAT_LOG_EVENT_UNFILTERED()
 		return
 	end
 	if dstGUID == Player.guid then
-		if EchoingReprimand.known then
-			if ability == EchoingReprimand[2] then
-				EchoingReprimand.animaCharged = eventType == 'SPELL_AURA_REMOVED' and -1 or 2
-			elseif ability == EchoingReprimand[3] then
-				EchoingReprimand.animaCharged = eventType == 'SPELL_AURA_REMOVED' and -1 or 3
-			elseif ability == EchoingReprimand[4] then
-				EchoingReprimand.animaCharged = eventType == 'SPELL_AURA_REMOVED' and -1 or 4
-			end
-		end
 		return -- ignore buffs beyond here
 	end
 	if ability.aura_targets then
@@ -2803,15 +2821,12 @@ function events:UNIT_POWER_UPDATE(srcName, powerType)
 end
 
 function events:UNIT_SPELLCAST_SENT(srcName, destName, castId, spellId)
-	if srcName ~= 'player' or not EchoingReprimand.known then
+	if srcName ~= 'player' or not EchoingReprimand.known or Player.anima_charged_cp ~= Player.combo_points then
 		return
 	end
 	local ability = abilities.bySpellId[spellId]
-	if not ability then
-		return
-	end
-	if ability.cp_cost > 0 and EchoingReprimand.animaCharged == UnitPower('player', 4) then
-		EchoingReprimand.animaCharged = -1
+	if ability and ability.cp_cost > 0 then
+		EchoingReprimand.use_time = GetTime() - Player.time_diff
 	end
 end
 
