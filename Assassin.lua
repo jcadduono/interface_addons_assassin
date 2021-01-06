@@ -1684,7 +1684,8 @@ actions.stealthed+=/mutilate
 end
 
 APL[SPEC.OUTLAW].main = function(self)
-	Player.rtb_reroll = RollTheBones:Stack() < 2 and TrueBearing:Down() and Broadside:Down()
+	Player.rtb_stack = RollTheBones:Stack()
+	Player.rtb_reroll = Player.rtb_stack < 2 and TrueBearing:Down() and Broadside:Down()
 	if Player:TimeInCombat() == 0 then
 --[[
 actions.precombat=apply_poison
@@ -1723,7 +1724,7 @@ actions.precombat+=/stealth
 		if SliceAndDice:Usable() and SliceAndDice:Remains() < (4 * Player:ComboPoints()) and Player:ComboPoints() >= 2 and Target.timeToDie > SliceAndDice:Remains() then
 			return SliceAndDice
 		end
-		if RollTheBones:Usable() and Player.rtb_reroll then
+		if RollTheBones:Usable() and (Player.rtb_reroll or (CountTheOdds.known and Player.stealthed and Player.rtb_stack < 3 and RollTheBones:Remains() < 8)) then
 			UseCooldown(RollTheBones)
 		end
 		if not Player.stealthed then
@@ -1813,7 +1814,7 @@ actions.cds+=/use_items,if=debuff.between_the_eyes.up&(!talent.ghostly_strike.en
 	if Player.use_cds and AdrenalineRush:Usable() and AdrenalineRush:Down() and (not KillingSpree.known or not KillingSpree:Ready()) then
 		return UseCooldown(AdrenalineRush)
 	end
-	if RollTheBones:Usable() and (Player.rtb_reroll or RollTheBones:Remains() < 3) then
+	if RollTheBones:Usable() and (Player.rtb_reroll or RollTheBones:Remains() < max(1, 4 - Player.rtb_stack)) then
 		return UseCooldown(RollTheBones)
 	end
 	if MarkedForDeath:Usable() and not Player.stealthed and Player:ComboPointsDeficit() >= (Player:ComboPointsMaxSpend() - 1) then
