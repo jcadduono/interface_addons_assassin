@@ -1724,7 +1724,7 @@ actions.precombat+=/stealth
 		if SliceAndDice:Usable() and SliceAndDice:Remains() < (4 * Player:ComboPoints()) and Player:ComboPoints() >= 2 and Target.timeToDie > SliceAndDice:Remains() then
 			return SliceAndDice
 		end
-		if RollTheBones:Usable() and (Player.rtb_reroll or (CountTheOdds.known and Player.stealthed and Player.rtb_stack < 3 and RollTheBones:Remains() < 8)) then
+		if RollTheBones:Usable() and (Player.rtb_reroll or (CountTheOdds.known and Player.rtb_stack < 3 and RollTheBones:Remains() < 8)) then
 			UseCooldown(RollTheBones)
 		end
 		if not Player.stealthed then
@@ -1735,7 +1735,7 @@ actions.precombat+=/stealth
 # Reroll single buffs early other than True Bearing and Broadside
 actions+=/variable,name=rtb_reroll,value=rtb_buffs<2&(!buff.true_bearing.up&!buff.broadside.up)
 # Ensure we get full Ambush CP gains and aren't rerolling Count the Odds buffs away
-actions+=/variable,name=ambush_condition,value=combo_points.deficit>=2+buff.broadside.up&energy>=50&(!conduit.count_the_odds|buff.roll_the_bones.remains>=10)
+actions+=/variable,name=ambush_condition,value=combo_points.deficit>=2+buff.broadside.up&energy>=50&(!conduit.count_the_odds|(rtb_buffs<5&buff.roll_the_bones.remains>=15&(!variable.rtb_reroll|cooldown.roll_the_bones.remains>10)))
 # With multiple targets, this variable is checked to decide whether some CDs should be synced with Blade Flurry
 actions+=/variable,name=blade_flurry_sync,value=spell_targets.blade_flurry<2&raid_event.adds.in>20|buff.blade_flurry.up
 actions+=/run_action_list,name=stealth,if=stealthed.all
@@ -1749,7 +1749,7 @@ actions+=/lights_judgment
 actions+=/bag_of_tricks
 ]]
 	Player.use_cds = Opt.cooldown and (Target.boss or Target.player or (not Opt.boss_only and Target.timeToDie > Opt.cd_ttd) or AdrenalineRush:Up())
-	Player.ambush_condition = Player:ComboPointsDeficit() >= (Broadside:Up() and 3 or 2) and Player:Energy() >= 50 and (not CountTheOdds.known or RollTheBones:Remains() >= 10)
+	Player.ambush_condition = Player:ComboPointsDeficit() >= (Broadside:Up() and 3 or 2) and Player:Energy() >= 50 and (not CountTheOdds.known or (Player.rtb_stack < 5 and RollTheBones:Remains() >= 15 and (not Player.rtb_reroll or not RollTheBones:Ready(10))))
 	Player.blade_flurry_sync = Player.enemies < 2 or BladeFlurry:Up()
 	if Player.stealthed then
 		return self:stealth()
@@ -1783,7 +1783,7 @@ actions.cds+=/vanish,if=!stealthed.all&variable.ambush_condition&master_assassin
 actions.cds+=/flagellation
 actions.cds+=/flagellation_cleanse,if=debuff.flagellation.remains<2
 actions.cds+=/adrenaline_rush,if=!buff.adrenaline_rush.up&(!cooldown.killing_spree.up|!talent.killing_spree.enabled)
-actions.cds+=/roll_the_bones,if=buff.roll_the_bones.remains<=3|variable.rtb_reroll
+actions.cds+=/roll_the_bones,if=buff.broadside.down&buff.roll_the_bones.remains<=3|variable.rtb_reroll
 # If adds are up, snipe the one with lowest TTD. Use when dying faster than CP deficit or without any CP.
 actions.cds+=/marked_for_death,target_if=min:target.time_to_die,if=raid_event.adds.up&(target.time_to_die<combo_points.deficit|!stealthed.rogue&combo_points.deficit>=cp_max_spend-1)
 # If no adds will die within the next 30s, use MfD on boss without any CP.
@@ -1814,7 +1814,7 @@ actions.cds+=/use_items,if=debuff.between_the_eyes.up&(!talent.ghostly_strike.en
 	if Player.use_cds and AdrenalineRush:Usable() and AdrenalineRush:Down() and (not KillingSpree.known or not KillingSpree:Ready()) then
 		return UseCooldown(AdrenalineRush)
 	end
-	if RollTheBones:Usable() and (Player.rtb_reroll or RollTheBones:Remains() < max(1, 4 - Player.rtb_stack)) then
+	if RollTheBones:Usable() and (Player.rtb_reroll or (Broadside:Down() and RollTheBones:Remains() < max(1, 4 - Player.rtb_stack))) then
 		return UseCooldown(RollTheBones)
 	end
 	if MarkedForDeath:Usable() and not Player.stealthed and Player:ComboPointsDeficit() >= (Player:ComboPointsMaxSpend() - 1) then
