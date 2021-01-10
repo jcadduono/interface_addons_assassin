@@ -2534,7 +2534,7 @@ function UI:UpdateCombat()
 	speed, max_speed = GetUnitSpeed('player')
 	Player.moving = speed ~= 0
 	Player.movement_speed = max_speed / 7 * 100
-	Player.stealthed = Stealth:Up() or Vanish:Up() or (ShadowDance.known and ShadowDance:Up()) or (Sepsis.known and Sepsis.buff:Up())
+	Player.stealthed = Stealth:Up() or Vanish:Up() or (ShadowDance.known and ShadowDance:Up()) or (Sepsis.known and Sepsis.buff:Up()) or (Shadowmeld.known and Shadowmeld:Up())
 	Player.anima_charged_cp = EchoingReprimand.known and EchoingReprimand:AnimaCharged() or nil
 
 	trackAuras:Purge()
