@@ -924,6 +924,14 @@ local SkullAndCrossbones = Ability:Add(199603, true, true) -- Roll the Bones
 SkullAndCrossbones.buff_duration = 30
 local TrueBearing = Ability:Add(193359, true, true) -- Roll the Bones
 TrueBearing.buff_duration = 30
+RollTheBones.buffs = {
+	[Broadside] = true,
+	[BuriedTreasure] = true,
+	[GrandMelee] = true,
+	[RuthlessPrecision] = true,
+	[SkullAndCrossbones] = true,
+	[TrueBearing] = true,
+}
 ---- Subtlety
 local Backstab = Ability:Add(53, false, true)
 Backstab.energy_cost = 35
@@ -1456,12 +1464,35 @@ end
 EchoingReprimand[3].Remains = EchoingReprimand[2].Remains
 EchoingReprimand[4].Remains = EchoingReprimand[2].Remains
 
+Broadside.Remains = function(self, rtbOnly)
+	if rtbOnly and self.trigger ~= RollTheBones then
+		return 0
+	end
+	return Ability.Remains(self)
+end
+BuriedTreasure.Remains = Broadside.Remains
+GrandMelee.Remains = Broadside.Remains
+RuthlessPrecision.Remains = Broadside.Remains
+SkullAndCrossbones.Remains = Broadside.Remains
+TrueBearing.Remains = Broadside.Remains
+
 function RollTheBones:Stack()
-	return (Broadside:Up() and 1 or 0) + (BuriedTreasure:Up() and 1 or 0) + (GrandMelee:Up() and 1 or 0) + (RuthlessPrecision:Up() and 1 or 0) + (SkullAndCrossbones:Up() and 1 or 0) + (TrueBearing:Up() and 1 or 0)
+	local count, buff = 0
+	for buff in next, self.buffs do
+		count = count + (buff:Remains(true) > 0 and 1 or 0)
+	end
+	return count
 end
 
 function RollTheBones:Remains()
-	return max(Broadside:Remains(), BuriedTreasure:Remains(), GrandMelee:Remains(), RuthlessPrecision:Remains(), SkullAndCrossbones:Remains(), TrueBearing:Remains())
+	local remains, buff = 0
+	for buff in next, self.buffs do
+		remains = buff:Remains(true)
+		if remains > 0 then
+			return remains
+		end
+	end
+	return 0
 end
 
 function Shadowmeld:Usable()
@@ -1730,7 +1761,7 @@ actions.precombat+=/stealth
 		if SliceAndDice:Usable() and SliceAndDice:Remains() < (4 * Player:ComboPoints()) and Player:ComboPoints() >= 2 and Target.timeToDie > SliceAndDice:Remains() then
 			return SliceAndDice
 		end
-		if RollTheBones:Usable() and (Player.rtb_reroll or (CountTheOdds.known and Player.rtb_buffs < 3 and Player.rtb_remains < 8)) then
+		if RollTheBones:Usable() and (Player.rtb_reroll or (Broadside:Down() and Player.rtb_remains < 5)) then
 			UseCooldown(RollTheBones)
 		end
 		if not Player.stealthed then
@@ -1741,7 +1772,7 @@ actions.precombat+=/stealth
 # Reroll single buffs early other than True Bearing and Broadside
 actions+=/variable,name=rtb_reroll,value=rtb_buffs<2&(!buff.true_bearing.up&!buff.broadside.up)
 # Ensure we get full Ambush CP gains and aren't rerolling Count the Odds buffs away
-actions+=/variable,name=ambush_condition,value=combo_points.deficit>=2+buff.broadside.up&energy>=50&(!conduit.count_the_odds|(rtb_buffs<5&buff.roll_the_bones.remains>15&(!variable.rtb_reroll|cooldown.roll_the_bones.remains>25)))
+actions+=/variable,name=ambush_condition,value=combo_points.deficit>=2+buff.broadside.up&energy>=50&(!conduit.count_the_odds|(!buff.broadside.up|!buff.true_bearing.up|!buff.ruthless_precision.up)&((!variable.rtb_reroll&buff.roll_the_bones.remains>15)|cooldown.roll_the_bones.remains>20))
 # With multiple targets, this variable is checked to decide whether some CDs should be synced with Blade Flurry
 actions+=/variable,name=blade_flurry_sync,value=spell_targets.blade_flurry<2&raid_event.adds.in>20|buff.blade_flurry.up
 actions+=/run_action_list,name=stealth,if=stealthed.all
@@ -1755,7 +1786,7 @@ actions+=/lights_judgment
 actions+=/bag_of_tricks
 ]]
 	Player.use_cds = Opt.cooldown and (Target.boss or Target.player or (not Opt.boss_only and Target.timeToDie > Opt.cd_ttd) or AdrenalineRush:Up())
-	Player.ambush_condition = Player:ComboPointsDeficit() >= (Broadside:Up() and 3 or 2) and Player:Energy() >= 50 and (not CountTheOdds.known or (Player.rtb_buffs < 5 and Player.rtb_remains > 15 and (not Player.rtb_reroll or not RollTheBones:Ready(25))))
+	Player.ambush_condition = Player:ComboPointsDeficit() >= (Broadside:Up() and 3 or 2) and Player:Energy() >= 50 and (not CountTheOdds.known or ((Broadside:Down() or TrueBearing:Down() or RuthlessPrecision:Down()) and ((not Player.rtb_reroll and Player.rtb_remains > 15) or not RollTheBones:Ready(20))))
 	Player.blade_flurry_sync = Player.enemies < 2 or BladeFlurry:Up()
 	if Player.stealthed then
 		return self:stealth()
@@ -2687,6 +2718,11 @@ function events:COMBAT_LOG_EVENT_UNFILTERED()
 		return
 	end
 	if dstGUID == Player.guid then
+		if eventType == 'SPELL_AURA_APPLIED' or eventType == 'SPELL_AURA_REFRESH' then
+			if RollTheBones.known and RollTheBones.buffs[ability] then
+				ability.trigger = RollTheBones.next_trigger
+			end
+		end
 		return -- ignore buffs beyond here
 	end
 	if ability.aura_targets then
@@ -2828,12 +2864,18 @@ function events:UNIT_POWER_UPDATE(srcName, powerType)
 end
 
 function events:UNIT_SPELLCAST_SENT(srcName, destName, castId, spellId)
-	if srcName ~= 'player' or not EchoingReprimand.known or Player.anima_charged_cp ~= Player.combo_points then
+	if srcName ~= 'player' then
 		return
 	end
 	local ability = abilities.bySpellId[spellId]
-	if ability and ability.cp_cost > 0 then
+	if not ability then
+		return
+	end
+	if EchoingReprimand.known and Player.anima_charged_cp == Player.combo_points and ability.cp_cost > 0 then
 		EchoingReprimand.use_time = GetTime() - Player.time_diff
+	end
+	if RollTheBones.known and (ability == RollTheBones or (CountTheOdds.known and (ability == Ambush or ability == Dispatch))) then
+		RollTheBones.next_trigger = ability
 	end
 end
 
