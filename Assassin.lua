@@ -1090,6 +1090,8 @@ PotionOfUnbridledFury.buff.triggers_gcd = false
 -- Equipment
 local Trinket1 = InventoryItem:Add(0)
 local Trinket2 = InventoryItem:Add(0)
+Trinket.BottledFlayedwingToxin = InventoryItem:Add(178742)
+Trinket.BottledFlayedwingToxin.buff = Ability:Add(345545, true, true)
 -- End Inventory Items
 
 -- Start Player API
@@ -1684,8 +1686,9 @@ actions.stealthed+=/mutilate
 end
 
 APL[SPEC.OUTLAW].main = function(self)
-	Player.rtb_stack = RollTheBones:Stack()
-	Player.rtb_reroll = Player.rtb_stack < 2 and TrueBearing:Down() and Broadside:Down()
+	Player.rtb_remains = RollTheBones:Remains()
+	Player.rtb_buffs = RollTheBones:Stack()
+	Player.rtb_reroll = Player.rtb_buffs < 2 and TrueBearing:Down() and Broadside:Down()
 	if Player:TimeInCombat() == 0 then
 --[[
 actions.precombat=apply_poison
@@ -1713,6 +1716,9 @@ actions.precombat+=/stealth
 				end
 			end
 		end
+		if Opt.trinket and Trinket.BottledFlayedwingToxin.can_use and Trinket.BottledFlayedwingToxin.buff:Down() and Trinket.BottledFlayedwingToxin:Usable() then
+			UseCooldown(Trinket.BottledFlayedwingToxin)
+		end
 		if Opt.pot and not Player:InArenaOrBattleground() then
 			if GreaterFlaskOfEndlessFathoms:Usable() and GreaterFlaskOfEndlessFathoms.buff:Remains() < 300 then
 				UseCooldown(GreaterFlaskOfTheCurrents)
@@ -1724,7 +1730,7 @@ actions.precombat+=/stealth
 		if SliceAndDice:Usable() and SliceAndDice:Remains() < (4 * Player:ComboPoints()) and Player:ComboPoints() >= 2 and Target.timeToDie > SliceAndDice:Remains() then
 			return SliceAndDice
 		end
-		if RollTheBones:Usable() and (Player.rtb_reroll or (CountTheOdds.known and Player.rtb_stack < 3 and RollTheBones:Remains() < 8)) then
+		if RollTheBones:Usable() and (Player.rtb_reroll or (CountTheOdds.known and Player.rtb_buffs < 3 and Player.rtb_remains < 8)) then
 			UseCooldown(RollTheBones)
 		end
 		if not Player.stealthed then
@@ -1735,7 +1741,7 @@ actions.precombat+=/stealth
 # Reroll single buffs early other than True Bearing and Broadside
 actions+=/variable,name=rtb_reroll,value=rtb_buffs<2&(!buff.true_bearing.up&!buff.broadside.up)
 # Ensure we get full Ambush CP gains and aren't rerolling Count the Odds buffs away
-actions+=/variable,name=ambush_condition,value=combo_points.deficit>=2+buff.broadside.up&energy>=50&(!conduit.count_the_odds|(rtb_buffs<5&buff.roll_the_bones.remains>=15&(!variable.rtb_reroll|cooldown.roll_the_bones.remains>10)))
+actions+=/variable,name=ambush_condition,value=combo_points.deficit>=2+buff.broadside.up&energy>=50&(!conduit.count_the_odds|(rtb_buffs<5&buff.roll_the_bones.remains>15&(!variable.rtb_reroll|cooldown.roll_the_bones.remains>25)))
 # With multiple targets, this variable is checked to decide whether some CDs should be synced with Blade Flurry
 actions+=/variable,name=blade_flurry_sync,value=spell_targets.blade_flurry<2&raid_event.adds.in>20|buff.blade_flurry.up
 actions+=/run_action_list,name=stealth,if=stealthed.all
@@ -1749,7 +1755,7 @@ actions+=/lights_judgment
 actions+=/bag_of_tricks
 ]]
 	Player.use_cds = Opt.cooldown and (Target.boss or Target.player or (not Opt.boss_only and Target.timeToDie > Opt.cd_ttd) or AdrenalineRush:Up())
-	Player.ambush_condition = Player:ComboPointsDeficit() >= (Broadside:Up() and 3 or 2) and Player:Energy() >= 50 and (not CountTheOdds.known or (Player.rtb_stack < 5 and RollTheBones:Remains() >= 15 and (not Player.rtb_reroll or not RollTheBones:Ready(10))))
+	Player.ambush_condition = Player:ComboPointsDeficit() >= (Broadside:Up() and 3 or 2) and Player:Energy() >= 50 and (not CountTheOdds.known or (Player.rtb_buffs < 5 and Player.rtb_remains > 15 and (not Player.rtb_reroll or not RollTheBones:Ready(25))))
 	Player.blade_flurry_sync = Player.enemies < 2 or BladeFlurry:Up()
 	if Player.stealthed then
 		return self:stealth()
@@ -1814,7 +1820,7 @@ actions.cds+=/use_items,if=debuff.between_the_eyes.up&(!talent.ghostly_strike.en
 	if Player.use_cds and AdrenalineRush:Usable() and AdrenalineRush:Down() and (not KillingSpree.known or not KillingSpree:Ready()) then
 		return UseCooldown(AdrenalineRush)
 	end
-	if RollTheBones:Usable() and (Player.rtb_reroll or (Broadside:Down() and RollTheBones:Remains() < max(1, 4 - Player.rtb_stack))) then
+	if RollTheBones:Usable() and (Player.rtb_reroll or (Broadside:Down() and Player.rtb_remains < max(1, 4 - Player.rtb_buffs))) then
 		return UseCooldown(RollTheBones)
 	end
 	if MarkedForDeath:Usable() and not Player.stealthed and Player:ComboPointsDeficit() >= (Player:ComboPointsMaxSpend() - 1) then
