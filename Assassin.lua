@@ -502,12 +502,12 @@ function Ability:Refreshable()
 	return self:Down()
 end
 
-function Ability:Up()
-	return self:Remains() > 0
+function Ability:Up(condition)
+	return self:Remains(condition) > 0
 end
 
-function Ability:Down()
-	return not self:Up()
+function Ability:Down(condition)
+	return self:Remains(condition) <= 0
 end
 
 function Ability:SetVelocity(velocity)
@@ -1788,11 +1788,12 @@ actions+=/bag_of_tricks
 	Player.use_cds = Opt.cooldown and (Target.boss or Target.player or (not Opt.boss_only and Target.timeToDie > Opt.cd_ttd) or AdrenalineRush:Up())
 	Player.ambush_condition = Player:ComboPointsDeficit() >= (Broadside:Up() and 3 or 2) and Player:Energy() >= 50 and (not CountTheOdds.known or ((Broadside:Down() or TrueBearing:Down() or RuthlessPrecision:Down()) and (Broadside:Down() or Broadside:Remains() > 10) and ((not Player.rtb_reroll and Player.rtb_remains > 15) or not RollTheBones:Ready(20))))
 	Player.blade_flurry_sync = Player.enemies < 2 or BladeFlurry:Up()
+	Player.use_finisher = Player:ComboPoints() >= (Player:ComboPointsMaxSpend() - (Broadside:Up() and 1 or 0) - (QuickDraw.known and Opportunity:Up() and 1 or 0)) or (EchoingReprimand.known and Player.anima_charged_cp == Player:ComboPoints())
 	if Player.stealthed then
 		return self:stealth()
 	end
 	self:cds()
-	if Player:ComboPoints() >= (Player:ComboPointsMaxSpend() - (Broadside:Up() and 1 or 0) - (QuickDraw.known and Opportunity:Up() and 1 or 0)) or (EchoingReprimand.known and Player.anima_charged_cp == Player:ComboPoints()) then
+	if Player.use_finisher then
 		return self:finish()
 	end
 	return self:build()
@@ -1820,7 +1821,7 @@ actions.cds+=/vanish,if=!stealthed.all&variable.ambush_condition&master_assassin
 actions.cds+=/flagellation
 actions.cds+=/flagellation_cleanse,if=debuff.flagellation.remains<2
 actions.cds+=/adrenaline_rush,if=!buff.adrenaline_rush.up&(!cooldown.killing_spree.up|!talent.killing_spree.enabled)
-actions.cds+=/roll_the_bones,if=buff.broadside.down&buff.roll_the_bones.remains<=3|variable.rtb_reroll
+actions.cds+=/roll_the_bones,if=variable.rtb_reroll|(buff.broadside.down|(variable.use_finisher&buff.ruthless_precision.down&buff.true_bearing.down))&buff.roll_the_bones.remains<=(4-rtb_buffs)
 # If adds are up, snipe the one with lowest TTD. Use when dying faster than CP deficit or without any CP.
 actions.cds+=/marked_for_death,target_if=min:target.time_to_die,if=raid_event.adds.up&(target.time_to_die<combo_points.deficit|!stealthed.rogue&combo_points.deficit>=cp_max_spend-1)
 # If no adds will die within the next 30s, use MfD on boss without any CP.
@@ -1851,7 +1852,7 @@ actions.cds+=/use_items,if=debuff.between_the_eyes.up&(!talent.ghostly_strike.en
 	if Player.use_cds and AdrenalineRush:Usable() and AdrenalineRush:Down() and (not KillingSpree.known or not KillingSpree:Ready()) then
 		return UseCooldown(AdrenalineRush)
 	end
-	if RollTheBones:Usable() and (Player.rtb_reroll or (Broadside:Down() and Player.rtb_remains < max(1, 4 - Player.rtb_buffs))) then
+	if RollTheBones:Usable() and (Player.rtb_reroll or ((Broadside:Down() or (Player.use_finisher and RuthlessPrecision:Down(true) and TrueBearing:Down(true))) and Player.rtb_remains < (4 - Player.rtb_buffs))) then
 		return UseCooldown(RollTheBones)
 	end
 	if MarkedForDeath:Usable() and not Player.stealthed and Player:ComboPointsDeficit() >= (Player:ComboPointsMaxSpend() - 1) then
