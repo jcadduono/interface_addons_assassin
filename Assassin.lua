@@ -1464,35 +1464,23 @@ end
 EchoingReprimand[3].Remains = EchoingReprimand[2].Remains
 EchoingReprimand[4].Remains = EchoingReprimand[2].Remains
 
-Broadside.Remains = function(self, rtbOnly)
-	if rtbOnly and self.trigger ~= RollTheBones then
-		return 0
-	end
-	return Ability.Remains(self)
-end
-BuriedTreasure.Remains = Broadside.Remains
-GrandMelee.Remains = Broadside.Remains
-RuthlessPrecision.Remains = Broadside.Remains
-SkullAndCrossbones.Remains = Broadside.Remains
-TrueBearing.Remains = Broadside.Remains
-
 function RollTheBones:Stack()
 	local count, buff = 0
 	for buff in next, self.buffs do
-		count = count + (buff:Remains(true) > 0 and 1 or 0)
+		count = count + (buff:Up() and 1 or 0)
 	end
 	return count
 end
 
 function RollTheBones:Remains()
-	local remains, buff = 0
+	local remains, max, buff = 0, 0
 	for buff in next, self.buffs do
-		remains = buff:Remains(true)
-		if remains > 0 then
-			return remains
+		remains = buff:Remains()
+		if remains > max then
+			max = remains
 		end
 	end
-	return 0
+	return max
 end
 
 function Shadowmeld:Usable()
@@ -1852,7 +1840,7 @@ actions.cds+=/use_items,if=debuff.between_the_eyes.up&(!talent.ghostly_strike.en
 	if Player.use_cds and AdrenalineRush:Usable() and AdrenalineRush:Down() and (not KillingSpree.known or not KillingSpree:Ready()) then
 		return UseCooldown(AdrenalineRush)
 	end
-	if RollTheBones:Usable() and (Player.rtb_reroll or ((Broadside:Down() or (Player.use_finisher and RuthlessPrecision:Down(true) and TrueBearing:Down(true))) and Player.rtb_remains < (4 - Player.rtb_buffs))) then
+	if RollTheBones:Usable() and (Player.rtb_reroll or ((Broadside:Down() or (Player.use_finisher and RuthlessPrecision:Down() and TrueBearing:Down())) and Player.rtb_remains < (4 - Player.rtb_buffs))) then
 		return UseCooldown(RollTheBones)
 	end
 	if MarkedForDeath:Usable() and not Player.stealthed and Player:ComboPointsDeficit() >= (Player:ComboPointsMaxSpend() - 1) then
