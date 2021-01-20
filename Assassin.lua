@@ -1758,9 +1758,9 @@ actions.precombat+=/stealth
 	end
 --[[
 # Reroll single buffs early other than True Bearing and Broadside
-actions+=/variable,name=rtb_reroll,value=rtb_buffs<2&(!buff.true_bearing.up&!buff.broadside.up)
+actions+=/variable,name=rtb_reroll,value=rtb_buffs<2&!buff.true_bearing.up&!buff.broadside.up
 # Ensure we get full Ambush CP gains and aren't rerolling Count the Odds buffs away
-actions+=/variable,name=ambush_condition,value=combo_points.deficit>=2+buff.broadside.up&energy>=50&(!conduit.count_the_odds|(!buff.broadside.up|!buff.true_bearing.up|!buff.ruthless_precision.up)&(!buff.broadside.up|buff.broadside.remains>10)&((!variable.rtb_reroll&buff.roll_the_bones.remains>15)|cooldown.roll_the_bones.remains>20))
+actions+=/variable,name=ambush_condition,value=combo_points.deficit>=2+buff.broadside.up&energy>=50&(!conduit.count_the_odds|cooldown.roll_the_bones.remains>25|(!buff.broadside.up|!buff.true_bearing.up|!buff.ruthless_precision.up)&(buff.broadside.remains>15|buff.true_bearing.remains>15|buff.ruthless_precision.remains>15))
 # With multiple targets, this variable is checked to decide whether some CDs should be synced with Blade Flurry
 actions+=/variable,name=blade_flurry_sync,value=spell_targets.blade_flurry<2&raid_event.adds.in>20|buff.blade_flurry.up
 actions+=/run_action_list,name=stealth,if=stealthed.all
@@ -1774,7 +1774,7 @@ actions+=/lights_judgment
 actions+=/bag_of_tricks
 ]]
 	Player.use_cds = Opt.cooldown and (Target.boss or Target.player or (not Opt.boss_only and Target.timeToDie > Opt.cd_ttd) or AdrenalineRush:Up())
-	Player.ambush_condition = Player:ComboPointsDeficit() >= (Broadside:Up() and 3 or 2) and Player:Energy() >= 50 and (not CountTheOdds.known or ((Broadside:Down() or TrueBearing:Down() or RuthlessPrecision:Down()) and (Broadside:Down() or Broadside:Remains() > 10) and ((not Player.rtb_reroll and Player.rtb_remains > 15) or not RollTheBones:Ready(20))))
+	Player.ambush_condition = Player:ComboPointsDeficit() >= (Broadside:Up() and 3 or 2) and Player:Energy() >= 50 and (not CountTheOdds.known or not RollTheBones:Ready(25) or ((Broadside:Down() or TrueBearing:Down() or RuthlessPrecision:Down()) and (Broadside:Remains() > 15 or TrueBearing:Remains() > 15 or RuthlessPrecision:Remains() > 15)))
 	Player.blade_flurry_sync = Player.enemies < 2 or BladeFlurry:Up()
 	Player.use_finisher = Player:ComboPoints() >= (Player:ComboPointsMaxSpend() - (Broadside:Up() and 1 or 0) - (QuickDraw.known and Opportunity:Up() and 1 or 0)) or (EchoingReprimand.known and Player.anima_charged_cp == Player:ComboPoints())
 	if Player.stealthed then
