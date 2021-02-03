@@ -987,6 +987,16 @@ EchoingReprimand.energy_cost = 10
 EchoingReprimand[2] = Ability:Add(323558, true, true)
 EchoingReprimand[3] = Ability:Add(323559, true, true)
 EchoingReprimand[4] = Ability:Add(323560, true, true)
+EchoingReprimand.finishers = {
+	[BetweenTheEyes] = true,
+	[BlackPowder] = true,
+	[DeathFromAbove] = true,
+	[Dispatch] = true,
+	[Envenom] = true,
+	[Eviscerate] = true,
+	[Rupture] = true,
+	[SecretTechnique] = true,
+}
 local Flagellation = Ability:Add(323654, true, true) -- Venthyr
 Flagellation.buff_duration = 20
 Flagellation.cooldown_duration = 90
@@ -1221,7 +1231,7 @@ end
 function Player:UpdateAbilities()
 	self.combo_points_max = UnitPowerMax('player', 4)
 
-	local _, ability, spellId
+	local _, ability, spellId, node
 
 	for _, ability in next, abilities.all do
 		ability.known = false
@@ -1239,7 +1249,13 @@ function Player:UpdateAbilities()
 			ability.known = self:BonusIdEquipped(ability.bonus_id)
 		end
 		if ability.conduit_id then
-			ability.known = C_Soulbinds.IsConduitInstalledInSoulbind(C_Soulbinds.GetActiveSoulbindID(), ability.conduit_id)
+			node = C_Soulbinds.FindNodeIDActuallyInstalled(C_Soulbinds.GetActiveSoulbindID(), ability.conduit_id)
+			if node then
+				node = C_Soulbinds.GetNode(node)
+				if node and node.state == 3 then
+					ability.known = true
+				end
+			end
 		end
 	end
 
@@ -1458,7 +1474,7 @@ function EchoingReprimand:AnimaCharged(cp)
 end
 
 EchoingReprimand[2].Remains = function(self)
-	if EchoingReprimand.use_time and Player.time - EchoingReprimand.use_time < 2 then
+	if EchoingReprimand.consumed then
 		return 0 -- BUG: the buff remains for a second or so after it is consumed
 	end
 	return Ability.Remains(self)
@@ -2875,11 +2891,30 @@ function events:UNIT_SPELLCAST_SENT(srcName, destName, castId, spellId)
 	if not ability then
 		return
 	end
-	if EchoingReprimand.known and Player.anima_charged_cp == Player.combo_points and ability.cp_cost > 0 then
-		EchoingReprimand.use_time = GetTime() - Player.time_diff
-	end
 	if RollTheBones.known and (ability == RollTheBones or (CountTheOdds.known and (ability == Ambush or ability == Dispatch))) then
 		RollTheBones.next_trigger = ability
+	end
+	if EchoingReprimand.known and Player.anima_charged_cp == Player.combo_points and EchoingReprimand.finishers[ability] then
+		EchoingReprimand.consume_castid = castId
+	end
+end
+
+function events:UNIT_SPELLCAST_SUCCEEDED(srcName, castId, spellId)
+	if srcName ~= 'player' then
+		return
+	end
+	local ability = abilities.bySpellId[spellId]
+	if not ability then
+		return
+	end
+	if EchoingReprimand.known then
+		if ability == EchoingReprimand then
+			EchoingReprimand.consume_castid = nil
+			EchoingReprimand.consumed = false
+		elseif castId == EchoingReprimand.consume_castid then
+			EchoingReprimand.consume_castid = nil
+			EchoingReprimand.consumed = true
+		end
 	end
 end
 
@@ -2896,6 +2931,18 @@ function events:UNIT_SPELLCAST_STOP(srcName)
 end
 
 function events:PLAYER_PVP_TALENT_UPDATE()
+	Player:UpdateAbilities()
+end
+
+function events:SOULBIND_ACTIVATED()
+	Player:UpdateAbilities()
+end
+
+function events:SOULBIND_NODE_UPDATED()
+	Player:UpdateAbilities()
+end
+
+function events:SOULBIND_PATH_CHANGED()
 	Player:UpdateAbilities()
 end
 
