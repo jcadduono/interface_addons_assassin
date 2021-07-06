@@ -1089,9 +1089,10 @@ EchoingReprimand.finishers = {
 	[SecretTechnique] = true,
 }
 local Flagellation = Ability:Add(323654, true, true) -- Venthyr
-Flagellation.buff_duration = 20
+Flagellation.buff_duration = 12
 Flagellation.cooldown_duration = 90
-Flagellation.energy_cost = 20
+Flagellation.debuff = Ability:Add(323654, false, true)
+Flagellation.debuff.buff_duration = 12
 local Sepsis = Ability:Add(328305, false, true) -- Night Fae
 Sepsis.cooldown_duration = 90
 Sepsis.energy_cost = 25
@@ -1118,6 +1119,8 @@ GreenskinsWickers.bonus_id = 7119
 local MarkOfTheMasterAssassin = Ability:Add(340076, true, true, 340094)
 MarkOfTheMasterAssassin.buff_duration = 4
 MarkOfTheMasterAssassin.bonus_id = 7111
+local Obedience = Ability:Add(354703, true, true)
+Obedience.bonus_id = 7572
 local TinyToxicBlade = Ability:Add(340078, true, true)
 TinyToxicBlade.bonus_id = 7112
 -- PvP talents
@@ -1967,9 +1970,8 @@ actions.cds=blade_flurry,if=spell_targets>=2&!buff.blade_flurry.up
 # Using Ambush is a 2% increase, so Vanish can be sometimes be used as a utility spell unless using Master Assassin or Deathly Shadows
 actions.cds+=/vanish,if=!runeforge.mark_of_the_master_assassin&!stealthed.all&variable.ambush_condition&(!runeforge.deathly_shadows|buff.deathly_shadows.down&combo_points<=2)
 actions.cds+=/vanish,if=runeforge.mark_of_the_master_assassin&master_assassin_remains=0&variable.blade_flurry_sync&(!cooldown.between_the_eyes.ready&variable.finish_condition|cooldown.between_the_eyes.ready&variable.ambush_condition)&(!conduit.count_the_odds|buff.roll_the_bones.remains>=10)
-actions.cds+=/flagellation
-actions.cds+=/flagellation_cleanse,if=debuff.flagellation.remains<2
 actions.cds+=/adrenaline_rush,if=!buff.adrenaline_rush.up&(!cooldown.killing_spree.up|!talent.killing_spree.enabled)
+actions.cds+=/flagellation,if=!stealthed.all&(variable.finish_condition|target.time_to_die<13)
 actions.cds+=/roll_the_bones,if=master_assassin_remains=0&(variable.rtb_reroll|(buff.broadside.down|(variable.finish_condition&buff.ruthless_precision.down&buff.true_bearing.down))&buff.roll_the_bones.remains<=(4-rtb_buffs))
 # If adds are up, snipe the one with lowest TTD. Use when dying faster than CP deficit or without any CP.
 actions.cds+=/marked_for_death,target_if=min:target.time_to_die,if=raid_event.adds.up&(target.time_to_die<combo_points.deficit|!stealthed.rogue&combo_points.deficit>=cp_max_spend-1)
@@ -1999,13 +2001,11 @@ actions.cds+=/use_items,slots=trinket2,if=!runeforge.mark_of_the_master_assassin
 			UseExtra(Vanish)
 		end
 	end
---[[
-	if Flagellation:Usable() then
-		UseCooldown(Flagellation)
-	end
-]]
 	if Player.use_cds and AdrenalineRush:Usable() and AdrenalineRush:Down() and (not KillingSpree.known or not KillingSpree:Ready()) then
 		return UseCooldown(AdrenalineRush)
+	end
+	if Flagellation:Usable() and not Player.stealthed and (Player.finish_condition or Target.timeToDie < 13) then
+		return UseCooldown(Flagellation)
 	end
 	if RollTheBones:Usable() and (Player.rtb_reroll or ((Broadside:Down() or (Player.use_finisher and RuthlessPrecision:Down() and TrueBearing:Down())) and Player.rtb_remains < (4 - Player.rtb_buffs))) then
 		return UseCooldown(RollTheBones)
@@ -2163,6 +2163,7 @@ actions+=/detection,if=equipped.echoing_void|equipped.echoing_void_oh
 ]]
 	Player.use_priority_rotation = Opt.priority_rotation and Player.enemies >= 2
 	Player.stealth_threshold = 25 + (Vigor.known and 35 or 0) + (MasterOfShadows.known and 25 or 0) + (ShadowFocus.known and 20 or 0) + (Alacrity.known and 10 or 0) + (Player.enemies >= 3 and 15 or 0)
+	Player.snd_condition = Player.enemies >= 6 or SliceAndDice:Up()
 	local apl
 	apl = self:cds()
 	if apl then return apl end
@@ -2209,6 +2210,7 @@ actions.cds+=/pool_resource,for_next=1,if=!talent.shadow_focus.enabled
 actions.cds+=/shuriken_tornado,if=energy>=60&dot.nightblade.ticking&cooldown.symbols_of_death.up&cooldown.shadow_dance.charges>=1
 # Use Symbols on cooldown (after first Rupture) unless we are going to pop Tornado and do not have Shadow Focus.
 actions.cds+=/symbols_of_death,if=dot.nightblade.ticking&!cooldown.shadow_blades.up&(!talent.shuriken_tornado.enabled|talent.shadow_focus.enabled|cooldown.shuriken_tornado.remains>2)&(!essence.blood_of_the_enemy.major|cooldown.blood_of_the_enemy.remains>2)&(azerite.nights_vengeance.rank<2|buff.nights_vengeance.up)
+actions.cds+=/flagellation,if=variable.snd_condition&!stealthed.mantle&(!runeforge.obedience|buff.symbols_of_death.up&combo_points>=5)
 # If adds are up, snipe the one with lowest TTD. Use when dying faster than CP deficit or not stealthed without any CP.
 actions.cds+=/marked_for_death,target_if=min:target.time_to_die,if=raid_event.adds.up&(target.time_to_die<combo_points.deficit|!stealthed.all&combo_points.deficit>=cp_max_spend)
 # If no adds will die within the next 30s, use MfD on boss without any CP and no stealth.
@@ -2252,6 +2254,9 @@ actions.cds+=/use_items,if=buff.symbols_of_death.up|target.time_to_die<20
 	if SymbolsOfDeath:Usable() and Rupture:Ticking() > 0 and not ShadowBlades:Ready() and (not ShurikenTornado.known or ShadowFocus.known or ShurikenTornado:Cooldown() > 2) then
 		return UseCooldown(SymbolsOfDeath)
 	end
+	if Flagellation:Usable() and Player.snd_condition and not Player.stealthed and (not Obedience.known or (SymbolsOfDeath:Up() and Player:ComboPoints() >= 5)) then
+		return UseCooldown(Flagellation)
+	end
 	if MarkedForDeath:Usable() and (
 		(Player.enemies > 1 and Target.timeToDie < Player:ComboPointsDeficit()) or
 		(not Player.stealthed and Player:ComboPointsDeficit() >= Player:ComboPointsMaxSpend())
@@ -2262,7 +2267,7 @@ actions.cds+=/use_items,if=buff.symbols_of_death.up|target.time_to_die<20
 		return UseCooldown(ShadowBlades)
 	end
 	if ShurikenTornado:Usable() and ShadowFocus.known and Rupture:Ticking() > 0 and SymbolsOfDeath:Up() then
-		return UseCOoldown(ShurikenTornado)
+		return UseCooldown(ShurikenTornado)
 	end
 	if ShadowDance:Usable() and not Player.stealthed and Target.timeToDie <= (Subterfuge.known and 6 or 5) then
 		return UseCooldown(ShadowDance)
@@ -2302,9 +2307,9 @@ actions.stealth_cds+=/shadow_dance,if=variable.shd_combo_points&target.time_to_d
 		if Vanish:Usable() and not SymbolsOfDeath:Ready(3) then
 			return UseCooldown(Vanish)
 		end
-		if Shadowmeld:Usable() and Player:Energy() >= 40 and Player:EnergyDeficit() >= 10 then
-			return Pool(Shadowmeld, 80)
-		end
+		--if Shadowmeld:Usable() and Player:Energy() >= 40 and Player:EnergyDeficit() >= 10 then
+		--	return Pool(Shadowmeld, 80)
+		--end
 	end
 	if Player.use_priority_rotation and (Nightstalker.known or DarkShadow.known) then
 		Player.shd_combo_points = Player:ComboPointsDeficit() <= 1
