@@ -5,13 +5,25 @@ if select(2, UnitClass('player')) ~= 'ROGUE' then
 end
 local ADDON_PATH = 'Interface\\AddOns\\' .. ADDON .. '\\'
 
--- copy heavily accessed global functions into local scope for performance
-local GetSpellCooldown = _G.GetSpellCooldown
+-- reference heavily accessed global functions from local scope for performance
+local min = math.min
+local max = math.max
+local floor = math.floor
+local GetPowerRegen = _G.GetPowerRegen
 local GetSpellCharges = _G.GetSpellCharges
+local GetSpellCooldown = _G.GetSpellCooldown
+local GetSpellInfo = _G.GetSpellInfo
 local GetTime = _G.GetTime
+local GetUnitSpeed = _G.GetUnitSpeed
 local UnitCastingInfo = _G.UnitCastingInfo
+local UnitChannelInfo = _G.UnitChannelInfo
 local UnitAura = _G.UnitAura
--- end copy global functions
+local UnitHealth = _G.UnitHealth
+local UnitHealthMax = _G.UnitHealthMax
+local UnitPower = _G.UnitPower
+local UnitPowerMax = _G.UnitPowerMax
+local UnitThreatSituation = _G.UnitThreatSituation
+-- end reference global functions
 
 -- useful functions
 local function between(n, min, max)
@@ -22,7 +34,7 @@ local function startsWith(str, start) -- case insensitive check to see if a stri
 	if type(str) ~= 'string' then
 		return false
 	end
-   return string.lower(str:sub(1, start:len())) == start:lower()
+	return string.lower(str:sub(1, start:len())) == start:lower()
 end
 -- end useful functions
 
@@ -125,10 +137,14 @@ local Player = {
 	time_diff = 0,
 	ctime = 0,
 	combat_start = 0,
+	level = 1,
 	spec = 0,
 	target_mode = 0,
-	group_size = 1,
+	execute_remains = 0,
+	haste_factor = 1,
 	gcd = 1,
+	gcd_remains = 0,
+	group_size = 1,
 	health = 0,
 	health_max = 0,
 	energy = 0,
@@ -426,6 +442,7 @@ function Ability:Add(spellId, buff, player, spellId2)
 		hasted_cooldown = false,
 		hasted_ticks = false,
 		known = false,
+		rank = 0,
 		energy_cost = 0,
 		cp_cost = 0,
 		cooldown_duration = 0,
@@ -477,7 +494,7 @@ function Ability:Usable(seconds, pool)
 end
 
 function Ability:Remains()
-	if self:Casting() or self:Traveling() then
+	if self:Casting() or self:Traveling() > 0 then
 		return self:Duration()
 	end
 	local _, i, id, expires
@@ -513,20 +530,26 @@ end
 function Ability:SetVelocity(velocity)
 	if velocity > 0 then
 		self.velocity = velocity
-		self.travel_start = {}
+		self.traveling = {}
 	else
-		self.travel_start = nil
+		self.traveling = nil
 		self.velocity = 0
 	end
 end
 
-function Ability:Traveling()
-	if self.travel_start and self.travel_start[Target.guid] then
-		if Player.time - self.travel_start[Target.guid] < self.max_range / self.velocity then
-			return true
-		end
-		self.travel_start[Target.guid] = nil
+function Ability:Traveling(all)
+	if not self.traveling then
+		return 0
 	end
+	local count, cast, _ = 0
+	for _, cast in next, self.traveling do
+		if all or cast.dstGUID == Target.guid then
+			if Player.time - cast.start < self.max_range / self.velocity then
+				count = count + 1
+			end
+		end
+	end
+	return count
 end
 
 function Ability:TravelTime()
@@ -534,16 +557,27 @@ function Ability:TravelTime()
 end
 
 function Ability:Ticking()
+	local count, ticking, _ = 0, {}
 	if self.aura_targets then
-		local count, guid, aura = 0
+		local guid, aura
 		for guid, aura in next, self.aura_targets do
 			if aura.expires - Player.time > Player.execute_remains then
-				count = count + 1
+				ticking[guid] = true
 			end
 		end
-		return count
 	end
-	return self:Up() and 1 or 0
+	if self.traveling then
+		local cast
+		for _, cast in next, self.traveling do
+			if Player.time - cast.start < self.max_range / self.velocity then
+				ticking[cast.dstGUID] = true
+			end
+		end
+	end
+	for _ in next, ticking do
+		count = count + 1
+	end
+	return count
 end
 
 function Ability:TickTime()
@@ -586,29 +620,41 @@ function Ability:CPCost()
 	return self.cp_cost
 end
 
-function Ability:Charges()
-	return (GetSpellCharges(self.spellId)) or 0
-end
-
 function Ability:ChargesFractional()
 	local charges, max_charges, recharge_start, recharge_time = GetSpellCharges(self.spellId)
+	if self:Casting() then
+		if charges >= max_charges then
+			return charges - 1
+		end
+		charges = charges - 1
+	end
 	if charges >= max_charges then
 		return charges
 	end
 	return charges + ((max(0, Player.ctime - recharge_start + Player.execute_remains)) / recharge_time)
 end
 
-function Ability:FullRechargeTime()
-	local charges, max_charges, recharge_start, recharge_time = GetSpellCharges(self.spellId)
-	if charges >= max_charges then
-		return 0
-	end
-	return (max_charges - charges - 1) * recharge_time + (recharge_time - (Player.ctime - recharge_start) - Player.execute_remains)
+function Ability:Charges()
+	return floor(self:ChargesFractional())
 end
 
 function Ability:MaxCharges()
 	local _, max_charges = GetSpellCharges(self.spellId)
 	return max_charges or 0
+end
+
+function Ability:FullRechargeTime()
+	local charges, max_charges, recharge_start, recharge_time = GetSpellCharges(self.spellId)
+	if self:Casting() then
+		if charges >= max_charges then
+			return recharge_time
+		end
+		charges = charges - 1
+	end
+	if charges >= max_charges then
+		return 0
+	end
+	return (max_charges - charges - 1) * recharge_time + (recharge_time - (Player.ctime - recharge_start) - Player.execute_remains)
 end
 
 function Ability:Duration()
@@ -653,7 +699,8 @@ end
 function Ability:AutoAoe(removeUnaffected, trigger)
 	self.auto_aoe = {
 		remove = removeUnaffected,
-		targets = {}
+		targets = {},
+		target_count = 0,
 	}
 	if trigger == 'periodic' then
 		self.auto_aoe.trigger = 'SPELL_PERIODIC_DAMAGE'
@@ -677,12 +724,56 @@ function Ability:UpdateTargetsHit()
 		if self.auto_aoe.remove then
 			autoAoe:Clear()
 		end
+		self.auto_aoe.target_count = 0
 		local guid
 		for guid in next, self.auto_aoe.targets do
 			autoAoe:Add(guid)
 			self.auto_aoe.targets[guid] = nil
+			self.auto_aoe.target_count = self.auto_aoe.target_count + 1
 		end
 		autoAoe:Update()
+	end
+end
+
+function Ability:Targets()
+	if self.auto_aoe and self:Up() then
+		return self.auto_aoe.target_count
+	end
+	return 0
+end
+
+function Ability:CastSuccess(dstGUID, timeStamp)
+	self.last_used = timeStamp
+	Player.last_ability = self
+	if self.triggers_gcd then
+		Player.previous_gcd[10] = nil
+		table.insert(Player.previous_gcd, 1, self)
+	end
+	if self.traveling and self.next_castGUID then
+		self.traveling[self.next_castGUID] = {
+			guid = self.next_castGUID,
+			start = self.last_used,
+			dstGUID = dstGUID,
+		}
+		self.next_castGUID = nil
+	end
+end
+
+function Ability:CastLanded(dstGUID, timeStamp, eventType)
+	if not self.traveling then
+		return
+	end
+	local guid, cast, oldest
+	for guid, cast in next, self.traveling do
+		if Player.time - cast.start >= self.max_range / self.velocity + 0.2 then
+			self.traveling[guid] = nil -- spell traveled 0.2s past max range, delete it, this should never happen
+		elseif cast.dstGUID == dstGUID and (not oldest or cast.start < oldest.start) then
+			oldest = cast
+		end
+	end
+	if oldest then
+		Target.estimated_range = min(self.max_range, floor(self.velocity * max(0, timeStamp - oldest.start)))
+		self.traveling[oldest.guid] = nil
 	end
 end
 
@@ -1101,11 +1192,12 @@ function InventoryItem:Usable(seconds)
 end
 
 -- Inventory Items
-local GreaterFlaskOfTheCurrents = InventoryItem:Add(168651)
-GreaterFlaskOfTheCurrents.buff = Ability:Add(298836, true, true)
-local PotionOfUnbridledFury = InventoryItem:Add(169299)
-PotionOfUnbridledFury.buff = Ability:Add(300714, true, true)
-PotionOfUnbridledFury.buff.triggers_gcd = false
+local SpectralFlaskOfPower = InventoryItem:Add(171276)
+SpectralFlaskOfPower.buff = Ability:Add(307185, true, true)
+local PotionOfPhantomFire = InventoryItem:Add(171349)
+PotionOfPhantomFire.buff = Ability:Add(307495, true, true)
+local PotionOfSpectralAgility = InventoryItem:Add(171270)
+PotionOfSpectralAgility.buff = Ability:Add(307159, true, true)
 -- Equipment
 local Trinket1 = InventoryItem:Add(0)
 local Trinket2 = InventoryItem:Add(0)
@@ -1229,10 +1321,10 @@ function Player:InArenaOrBattleground()
 end
 
 function Player:UpdateAbilities()
+	self.rescan_abilities = false
 	self.combo_points_max = UnitPowerMax('player', 4)
 
 	local _, ability, spellId, node
-
 	for _, ability in next, abilities.all do
 		ability.known = false
 		for _, spellId in next, ability.spellIds do
@@ -1252,8 +1344,13 @@ function Player:UpdateAbilities()
 			node = C_Soulbinds.FindNodeIDActuallyInstalled(C_Soulbinds.GetActiveSoulbindID(), ability.conduit_id)
 			if node then
 				node = C_Soulbinds.GetNode(node)
-				if node and node.state == 3 then
-					ability.known = true
+				if node then
+					if node.conduitID == 0 then
+						self.rescan_abilities = true -- rescan on next target, conduit data has not finished loading
+					else
+						ability.known = node.state == 3
+						ability.rank = node.conduitRank
+					end
 				end
 			end
 		end
@@ -1294,6 +1391,45 @@ function Player:UpdateAbilities()
 	end
 end
 
+function Player:Update()
+	local _, start, duration, remains, spellId, speed, max_speed
+	self.ctime = GetTime()
+	self.time = self.ctime - self.time_diff
+	self.main =  nil
+	self.cd = nil
+	self.interrupt = nil
+	self.extra = nil
+	self.pool_energy = nil
+	start, duration = GetSpellCooldown(61304)
+	self.gcd_remains = start > 0 and duration - (self.ctime - start) or 0
+	_, _, _, _, remains, _, _, _, spellId = UnitCastingInfo('player')
+	self.ability_casting = abilities.bySpellId[spellId]
+	self.execute_remains = max(remains and (remains / 1000 - self.ctime) or 0, self.gcd_remains)
+	self.haste_factor = 1 / (1 + UnitSpellHaste('player') / 100)
+	self.health = UnitHealth('player')
+	self.health_max = UnitHealthMax('player')
+	self.energy_regen = GetPowerRegen()
+	self.energy_max = UnitPowerMax('player', 3)
+	self.energy = UnitPower('player', 3) + (self.energy_regen * self.execute_remains)
+	self.energy = min(max(self.energy, 0), self.energy_max)
+	self.combo_points = UnitPower('player', 4)
+	speed, max_speed = GetUnitSpeed('player')
+	self.moving = speed ~= 0
+	self.movement_speed = max_speed / 7 * 100
+	self.threat = UnitThreatSituation('player', 'target') or 0
+	self.stealthed = Stealth:Up() or Vanish:Up() or (ShadowDance.known and ShadowDance:Up()) or (Sepsis.known and Sepsis.buff:Up()) or (Shadowmeld.known and Shadowmeld:Up())
+	self.anima_charged_cp = EchoingReprimand.known and EchoingReprimand:AnimaCharged() or nil
+
+	trackAuras:Purge()
+	if Opt.auto_aoe then
+		local ability
+		for _, ability in next, abilities.autoAoe do
+			ability:UpdateTargetsHit()
+		end
+		autoAoe:Purge()
+	end
+end
+
 -- End Player API
 
 -- Start Target API
@@ -1322,7 +1458,7 @@ function Target:Update()
 		self.stunnable = true
 		self.classification = 'normal'
 		self.player = false
-		self.level = UnitLevel('player')
+		self.level = Player.level
 		self.hostile = true
 		local i
 		for i = 1, 25 do
@@ -1350,11 +1486,11 @@ function Target:Update()
 	self.stunnable = true
 	self.classification = UnitClassification('target')
 	self.player = UnitIsPlayer('target')
-	self.level = UnitLevel('target')
+	self.level = UnitEffectiveLevel('target')
 	self.hostile = UnitCanAttack('player', 'target') and not UnitIsDead('target')
 	self:UpdateHealth()
 	if not self.player and self.classification ~= 'minus' and self.classification ~= 'normal' then
-		if self.level == -1 or (Player.instance == 'party' and self.level >= UnitLevel('player') + 3) then
+		if self.level == -1 or (Player.instance == 'party' and self.level >= Player.level + 2) then
 			self.boss = true
 			self.stunnable = false
 		elseif Player.instance == 'raid' or (self.health_max > Player.health_max * 10) then
@@ -1560,7 +1696,7 @@ APL[SPEC.ASSASSINATION].main = function(self)
 			end
 		end
 		if Opt.pot and not Player:InArenaOrBattleground() then
-			if GreaterFlaskOfEndlessFathoms:Usable() and GreaterFlaskOfEndlessFathoms.buff:Remains() < 300 then
+			if SpectralFlaskOfPower:Usable() and SpectralFlaskOfPower.buff:Remains() < 300 then
 				UseCooldown(GreaterFlaskOfTheCurrents)
 			end
 		end
@@ -1631,8 +1767,8 @@ actions.build+=/mutilate
 end
 
 APL[SPEC.ASSASSINATION].cds = function(self)
-	if Opt.pot and PotionOfUnbridledFury:Usable() and (Player:BloodlustActive() or Target.timeToDie <= 60 or Vendetta:Up() and Vanish:Ready(5)) then
-		return UseCooldown(PotionOfUnbridledFury)
+	if Opt.pot and PotionOfPhantomFire:Usable() and (Player:BloodlustActive() or Target.timeToDie <= 60 or Vendetta:Up() and Vanish:Ready(5)) then
+		return UseCooldown(PotionOfPhantomFire)
 	end
 	if ArcaneTorrent:Usable() and Envenom:Down() and Player:EnergyDeficit() >= 15 + Player.energy_regen_combined * Player.gcd_remains * 1.1 then
 		return UseCooldown(ArcaneTorrent)
@@ -1762,7 +1898,7 @@ actions.precombat+=/stealth
 			UseCooldown(Trinket.BottledFlayedwingToxin)
 		end
 		if Opt.pot and not Player:InArenaOrBattleground() then
-			if GreaterFlaskOfEndlessFathoms:Usable() and GreaterFlaskOfEndlessFathoms.buff:Remains() < 300 then
+			if SpectralFlaskOfPower:Usable() and SpectralFlaskOfPower.buff:Remains() < 300 then
 				UseCooldown(GreaterFlaskOfTheCurrents)
 			end
 		end
@@ -1893,8 +2029,8 @@ actions.cds+=/use_items,slots=trinket2,if=!runeforge.mark_of_the_master_assassin
 			UseExtra(Shadowmeld)
 		end
 	end
-	if Opt.pot and Target.boss and not Player:InArenaOrBattleground() and PotionOfUnbridledFury:Usable() and (Player:BloodlustActive() or Target.timeToDie < 30 or AdrenalineRush:Remains() > 8) then
-		return UseCooldown(PotionOfUnbridledFury)
+	if Opt.pot and Target.boss and not Player:InArenaOrBattleground() and PotionOfPhantomFire:Usable() and (Player:BloodlustActive() or Target.timeToDie < 30 or AdrenalineRush:Remains() > 8) then
+		return UseCooldown(PotionOfPhantomFire)
 	end
 	if Opt.trinket and ((Target.boss and Target.timeToDie < 20) or (MarkOfTheMasterAssassin.known and MarkOfTheMasterAssassin:Up()) or (not MarkOfTheMasterAssassin.known and BetweenTheEyes:Up() and (not GhostlyStrike.known or GhostlyStrike:Up()))) then
 		if Trinket1:Usable() then
@@ -1984,7 +2120,7 @@ APL[SPEC.SUBTLETY].main = function(self)
 			end
 		end
 		if Opt.pot and not Player:InArenaOrBattleground() then
-			if GreaterFlaskOfEndlessFathoms:Usable() and GreaterFlaskOfEndlessFathoms.buff:Remains() < 300 then
+			if SpectralFlaskOfPower:Usable() and SpectralFlaskOfPower.buff:Remains() < 300 then
 				UseCooldown(GreaterFlaskOfTheCurrents)
 			end
 		end
@@ -2131,8 +2267,8 @@ actions.cds+=/use_items,if=buff.symbols_of_death.up|target.time_to_die<20
 	if ShadowDance:Usable() and not Player.stealthed and Target.timeToDie <= (Subterfuge.known and 6 or 5) then
 		return UseCooldown(ShadowDance)
 	end
-	if Opt.pot and Target.boss and PotionOfUnbridledFury:Usable() and (Player:BloodlustActive() or SymbolsOfDeath:Up() and (ShadowBlades:Up() or ShadowBlades:Ready(10))) then
-		return UseCooldown(PotionOfUnbridledFury)
+	if Opt.pot and Target.boss and PotionOfPhantomFire:Usable() and (Player:BloodlustActive() or SymbolsOfDeath:Up() and (ShadowBlades:Up() or ShadowBlades:Ready(10))) then
+		return UseCooldown(PotionOfPhantomFire)
 	end
 	if Opt.trinket and (Target.timeToDie < 20 or SymbolsOfDeath:Remains() > 6) then
 		if Trinket1:Usable() then
@@ -2567,41 +2703,8 @@ end
 
 function UI:UpdateCombat()
 	timer.combat = 0
-	local _, start, duration, remains, spellId, speed, max_speed
-	Player.ctime = GetTime()
-	Player.time = Player.ctime - Player.time_diff
-	Player.main =  nil
-	Player.cd = nil
-	Player.interrupt = nil
-	Player.extra = nil
-	Player.pool_energy = nil
-	start, duration = GetSpellCooldown(61304)
-	Player.gcd_remains = start > 0 and duration - (Player.ctime - start) or 0
-	_, _, _, _, remains, _, _, _, spellId = UnitCastingInfo('player')
-	Player.ability_casting = abilities.bySpellId[spellId]
-	Player.execute_remains = max(remains and (remains / 1000 - Player.ctime) or 0, Player.gcd_remains)
-	Player.haste_factor = 1 / (1 + UnitSpellHaste('player') / 100)
-	Player.health = UnitHealth('player')
-	Player.health_max = UnitHealthMax('player')
-	Player.energy_regen = GetPowerRegen()
-	Player.energy_max = UnitPowerMax('player', 3)
-	Player.energy = UnitPower('player', 3) + (Player.energy_regen * Player.execute_remains)
-	Player.energy = min(max(Player.energy, 0), Player.energy_max)
-	Player.combo_points = UnitPower('player', 4)
-	speed, max_speed = GetUnitSpeed('player')
-	Player.moving = speed ~= 0
-	Player.movement_speed = max_speed / 7 * 100
-	Player.stealthed = Stealth:Up() or Vanish:Up() or (ShadowDance.known and ShadowDance:Up()) or (Sepsis.known and Sepsis.buff:Up()) or (Shadowmeld.known and Shadowmeld:Up())
-	Player.anima_charged_cp = EchoingReprimand.known and EchoingReprimand:AnimaCharged() or nil
 
-	trackAuras:Purge()
-	if Opt.auto_aoe then
-		local ability
-		for _, ability in next, abilities.autoAoe do
-			ability:UpdateTargetsHit()
-		end
-		autoAoe:Purge()
-	end
+	Player:Update()
 
 	Player.main = APL[Player.spec]:main()
 	if Player.main then
@@ -2615,8 +2718,7 @@ function UI:UpdateCombat()
 		assassinExtraPanel.icon:SetTexture(Player.extra.icon)
 	end
 	if Opt.interrupt then
-		local ends, notInterruptible
-		_, _, _, start, ends, _, _, notInterruptible = UnitCastingInfo('target')
+		local _, _, _, start, ends, _, _, notInterruptible = UnitCastingInfo('target')
 		if not start then
 			_, _, _, start, ends, _, notInterruptible = UnitChannelInfo('target')
 		end
@@ -2635,6 +2737,7 @@ function UI:UpdateCombat()
 	assassinPanel.border:SetShown(Player.main)
 	assassinCooldownPanel:SetShown(Player.cd)
 	assassinExtraPanel:SetShown(Player.extra)
+
 	self:UpdateDisplay()
 	self:UpdateGlows()
 end
@@ -2678,6 +2781,7 @@ function events:COMBAT_LOG_EVENT_UNFILTERED()
 		if Opt.auto_aoe then
 			autoAoe:Remove(dstGUID)
 		end
+		return
 	end
 	if eventType == 'SWING_DAMAGE' or eventType == 'SWING_MISSED' then
 		if dstGUID == Player.guid then
@@ -2720,15 +2824,7 @@ function events:COMBAT_LOG_EVENT_UNFILTERED()
 
 	UI:UpdateCombatWithin(0.05)
 	if eventType == 'SPELL_CAST_SUCCESS' then
-		Player.last_ability = ability
-		ability.last_used = Player.time
-		if ability.triggers_gcd then
-			Player.previous_gcd[10] = nil
-			table.insert(Player.previous_gcd, 1, ability)
-		end
-		if ability.travel_start then
-			ability.travel_start[dstGUID] = Player.time
-		end
+		ability:CastSuccess(dstGUID, timeStamp)
 		if Opt.previous and assassinPanel:IsVisible() then
 			assassinPreviousPanel.ability = ability
 			assassinPreviousPanel.border:SetTexture(ADDON_PATH .. 'border.blp')
@@ -2764,9 +2860,7 @@ function events:COMBAT_LOG_EVENT_UNFILTERED()
 		end
 	end
 	if eventType == 'SPELL_ABSORBED' or eventType == 'SPELL_MISSED' or eventType == 'SPELL_DAMAGE' or eventType == 'SPELL_AURA_APPLIED' or eventType == 'SPELL_AURA_REFRESH' then
-		if ability.travel_start and ability.travel_start[dstGUID] then
-			ability.travel_start[dstGUID] = nil
-		end
+		ability:CastLanded(dstGUID, timeStamp, eventType)
 		if Opt.previous and Opt.miss_effect and eventType == 'SPELL_MISSED' and assassinPanel:IsVisible() and ability == assassinPreviousPanel.ability then
 			assassinPreviousPanel.border:SetTexture(ADDON_PATH .. 'misseffect.blp')
 		end
@@ -2775,6 +2869,9 @@ end
 
 function events:PLAYER_TARGET_CHANGED()
 	Target:Update()
+	if Player.rescan_abilities then
+		Player:UpdateAbilities()
+	end
 end
 
 function events:UNIT_FACTION(unitID)
@@ -2804,8 +2901,8 @@ function events:PLAYER_REGEN_ENABLED()
 	end
 	local _, ability, guid
 	for _, ability in next, abilities.velocity do
-		for guid in next, ability.travel_start do
-			ability.travel_start[guid] = nil
+		for guid in next, ability.traveling do
+			ability.traveling[guid] = nil
 		end
 	end
 	if Opt.auto_aoe then
@@ -2854,13 +2951,14 @@ function events:PLAYER_SPECIALIZATION_CHANGED(unitName)
 	if unitName ~= 'player' then
 		return
 	end
+	Player.level = UnitEffectiveLevel('player')
 	Player.spec = GetSpecialization() or 0
 	assassinPreviousPanel.ability = nil
 	Player:SetTargetMode(1)
-	Target:Update()
 	events:PLAYER_EQUIPMENT_CHANGED()
 	events:PLAYER_REGEN_ENABLED()
-	UI.OnResourceFrameShow()
+	Target:Update()
+	Player:Update()
 end
 
 function events:SPELL_UPDATE_COOLDOWN()
@@ -2883,7 +2981,7 @@ function events:UNIT_POWER_UPDATE(srcName, powerType)
 	end
 end
 
-function events:UNIT_SPELLCAST_SENT(srcName, destName, castId, spellId)
+function events:UNIT_SPELLCAST_SENT(srcName, destName, castGUID, spellId)
 	if srcName ~= 'player' then
 		return
 	end
@@ -2895,26 +2993,7 @@ function events:UNIT_SPELLCAST_SENT(srcName, destName, castId, spellId)
 		RollTheBones.next_trigger = ability
 	end
 	if EchoingReprimand.known and Player.anima_charged_cp == Player.combo_points and EchoingReprimand.finishers[ability] then
-		EchoingReprimand.consume_castid = castId
-	end
-end
-
-function events:UNIT_SPELLCAST_SUCCEEDED(srcName, castId, spellId)
-	if srcName ~= 'player' then
-		return
-	end
-	local ability = abilities.bySpellId[spellId]
-	if not ability then
-		return
-	end
-	if EchoingReprimand.known then
-		if ability == EchoingReprimand then
-			EchoingReprimand.consume_castid = nil
-			EchoingReprimand.consumed = false
-		elseif castId == EchoingReprimand.consume_castid then
-			EchoingReprimand.consume_castid = nil
-			EchoingReprimand.consumed = true
-		end
+		EchoingReprimand.consume_castGUID = castGUID
 	end
 end
 
@@ -2927,6 +3006,28 @@ end
 function events:UNIT_SPELLCAST_STOP(srcName)
 	if Opt.interrupt and srcName == 'target' then
 		UI:UpdateCombatWithin(0.05)
+	end
+end
+
+function events:UNIT_SPELLCAST_SUCCEEDED(srcName, castGUID, spellId)
+	if srcName ~= 'player' or castGUID:sub(6, 6) ~= '3' then
+		return
+	end
+	local ability = spellId and abilities.bySpellId[spellId]
+	if not ability then
+		return
+	end
+	if ability.traveling then
+		ability.next_castGUID = castGUID
+	end
+	if EchoingReprimand.known then
+		if ability == EchoingReprimand then
+			EchoingReprimand.consume_castGUID = nil
+			EchoingReprimand.consumed = false
+		elseif castGUID == EchoingReprimand.consume_castGUID then
+			EchoingReprimand.consume_castGUID = nil
+			EchoingReprimand.consumed = true
+		end
 	end
 end
 
