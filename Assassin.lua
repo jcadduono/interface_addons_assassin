@@ -2370,12 +2370,12 @@ actions.finish+=/slice_and_dice,if=variable.premed_snd_condition&cooldown.shadow
 # Helper Variable for Rupture. Skip during Master Assassin or during Dance with Dark and no Nightstalker.
 actions.finish+=/variable,name=skip_rupture,value=master_assassin_remains>0|!talent.nightstalker.enabled&talent.dark_shadow.enabled&buff.shadow_dance.up|spell_targets.shuriken_storm>=(5-runeforge.finality)
 # Keep up Rupture if it is about to run out.
-actions.finish+=/rupture,if=(!variable.skip_rupture|variable.use_priority_rotation)&target.time_to_die-remains>6&refreshable
+actions.finish+=/rupture,if=(!variable.skip_rupture|variable.use_priority_rotation)&target.time_to_die>remains+(4+4*combo_points)*spell_haste&refreshable
 actions.finish+=/secret_technique
 # Multidotting targets that will live for the duration of Rupture, refresh during pandemic.
-actions.finish+=/rupture,cycle_targets=1,if=!variable.skip_rupture&!variable.use_priority_rotation&spell_targets.shuriken_storm>=2&target.time_to_die>=(5+(2*combo_points))&refreshable
+actions.finish+=/rupture,cycle_targets=1,if=!variable.skip_rupture&!variable.use_priority_rotation&spell_targets.shuriken_storm>=2&target.time_to_die>remains+(4+4*combo_points)*spell_haste&refreshable
 # Refresh Rupture early if it will expire during Symbols. Do that refresh if SoD gets ready in the next 5s.
-actions.finish+=/rupture,if=!variable.skip_rupture&remains<cooldown.symbols_of_death.remains+10&cooldown.symbols_of_death.remains<=5&target.time_to_die-remains>cooldown.symbols_of_death.remains+5
+actions.finish+=/rupture,if=!variable.skip_rupture&remains<cooldown.symbols_of_death.remains+10&cooldown.symbols_of_death.remains<=5&target.time_to_die-remains>cooldown.symbols_of_death.remains+5&target.time_to_die>remains+(4+4*combo_points)*spell_haste&refreshable
 actions.finish+=/black_powder,if=!variable.use_priority_rotation&spell_targets>=3
 actions.finish+=/eviscerate
 ]]
@@ -2388,15 +2388,16 @@ actions.finish+=/eviscerate
 			return SliceAndDice
 		end
 	end
+	Player.use_rupture = Rupture:Refreshable() and Target.timeToDie >= (Rupture:Remains() + ((4 * Player:ComboPoints()) * Player.haste_factor))
 	Player.skip_rupture = (MarkOfTheMasterAssassin.known and MarkOfTheMasterAssassin:Up()) or (not Nightstalker.known and DarkShadow.known and ShadowDance:Up()) or Player.enemies >= (5 - (Finality.known and 1 or 0))
-	if Rupture:Usable(0, true) and (not Player.skip_rupture or Player.use_priority_rotation) and Rupture:Refreshable() and Target.timeToDie > (Rupture:Remains() + 6) then
+	if Player.use_rupture and Rupture:Usable(0, true) and (not Player.skip_rupture or Player.use_priority_rotation) then
 		return Pool(Rupture)
 	end
 	if SecretTechnique:Usable(0, true) then
 		return Pool(SecretTechnique)
 	end
-	if Rupture:Usable(0, true) and not Player.skip_rupture then
-		if not Player.use_priority_rotation and Player.enemies >= 2 and Target.timeToDie >= (5 + (2 * Player:ComboPoints())) and Rupture:Refreshable() then
+	if Player.use_rupture and Rupture:Usable(0, true) and not Player.skip_rupture then
+		if not Player.use_priority_rotation and Player.enemies >= 2 then
 			return Pool(Rupture)
 		end
 		if Rupture:Remains() < (SymbolsOfDeath:Cooldown() + 10) and SymbolsOfDeath:Ready(5) and (Target.timeToDie - Rupture:Remains()) > (SymbolsOfDeath:Cooldown() + 5) then
