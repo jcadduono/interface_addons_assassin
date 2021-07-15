@@ -885,17 +885,29 @@ local Vanish = Ability:Add(1856, true, true, 11327)
 ------ Talents
 local Alacrity = Ability:Add(193539, true, true)
 Alacrity.buff_duration = 20
-local Anticipation = Ability:Add(114015, false, true)
 local DeeperStratagem = Ability:Add(193531, false, true)
-local DirtyTricks = Ability:Add(108216, false, true)
 local MarkedForDeath = Ability:Add(137619, false, true)
 MarkedForDeath.cooldown_duration = 60
 MarkedForDeath.triggers_gcd = false
 local Nightstalker = Ability:Add(14062, false, true)
-local Premeditation = Ability:Add(343160, true, true, 343173)
-local ShadowFocus = Ability:Add(108209, false, true)
 local Subterfuge = Ability:Add(108208, true, true, 115192)
 local Vigor = Ability:Add(14983, false, true)
+local Weaponmaster = Ability:Add({193537, 200733}, false, true)
+------ Poisons
+local CripplingPoison = Ability:Add(3408, true, true)
+CripplingPoison.dot = Ability:Add(3409, false, true)
+CripplingPoison.dot.buff_duration = 12
+local DeadlyPoison = Ability:Add(2823, true, true)
+DeadlyPoison.dot = Ability:Add(2818, false, true)
+DeadlyPoison.dot.buff_duration = 12
+DeadlyPoison.dot.tick_interval = 2
+DeadlyPoison.dot.hasted_ticks = true
+DeadlyPoison.dot:TrackAuras()
+local InstantPoison = Ability:Add(315584, true, true)
+local WoundPoison = Ability:Add(8679, true, true)
+WoundPoison.dot = Ability:Add(8680, false, true)
+WoundPoison.dot.buff_duration = 12
+WoundPoison.dot:TrackAuras()
 ---- Assassination
 local Envenom = Ability:Add(32645, true, true)
 Envenom.buff_duration = 1
@@ -921,22 +933,8 @@ Vendetta.cooldown_duration = 120
 Vendetta.triggers_gcd = false
 local VirulentPoisons = Ability:Add(252277, true, true)
 VirulentPoisons.buff_duration = 6
------- Poisons
-local CripplingPoison = Ability:Add(3408, true, true)
-CripplingPoison.dot = Ability:Add(3409, false, true)
-CripplingPoison.dot.buff_duration = 12
-local DeadlyPoison = Ability:Add(2823, true, true)
-DeadlyPoison.dot = Ability:Add(2818, false, true)
-DeadlyPoison.dot.buff_duration = 12
-DeadlyPoison.dot.tick_interval = 2
-DeadlyPoison.dot.hasted_ticks = true
-DeadlyPoison.dot:TrackAuras()
-local InstantPoison = Ability:Add(315584, true, true)
-local WoundPoison = Ability:Add(8679, true, true)
-WoundPoison.dot = Ability:Add(8680, false, true)
-WoundPoison.dot.buff_duration = 12
-WoundPoison.dot:TrackAuras()
 ------ Talents
+local Anticipation = Ability:Add(114015, false, true)
 local DeathFromAbove = Ability:Add(152150, false, true)
 DeathFromAbove.cooldown_duration = 20
 DeathFromAbove.energy_cost = 25
@@ -990,6 +988,7 @@ SinisterStrike.energy_cost = 45
 local BladeRush = Ability:Add(271877, false, true, 271881)
 BladeRush.cooldown_duration = 45
 BladeRush:AutoAoe()
+local DirtyTricks = Ability:Add(108216, false, true)
 local Dreadblades = Ability:Add(343142, false, true)
 Dreadblades.buff_duration = 10
 Dreadblades.cooldown_duration = 90
@@ -1065,10 +1064,12 @@ Gloomblade.energy_cost = 35
 local DarkShadow = Ability:Add(245687, false, true)
 local EnvelopingShadows = Ability:Add(238104, true, true)
 local MasterOfShadows = Ability:Add(196976, false, true)
+local Premeditation = Ability:Add(343160, true, true, 343173)
 local SecretTechnique = Ability:Add(280719, true, true)
 SecretTechnique.energy_cost = 30
 SecretTechnique.cp_cost = 1
 SecretTechnique:AutoAoe(true)
+local ShadowFocus = Ability:Add(108209, false, true)
 local ShotInTheDark = Ability:Add(257505, true, true, 257506)
 local ShurikenTornado = Ability:Add(277925, true, true)
 ShurikenTornado.energy_cost = 60
