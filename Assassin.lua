@@ -2266,7 +2266,7 @@ actions.cds+=/use_items,if=buff.symbols_of_death.up|fight_remains<20
 	if Flagellation:Usable() and Player.snd_condition and SymbolsOfDeath:Up() and Player:ComboPoints() >= 5 then
 		return UseCooldown(Flagellation)
 	end
-	if Vanish:Usable() and ((MarkOfTheMasterAsssassin.known and Player:ComboPointsDeficit() <= (DeeperStratagem.known and 0 or 1)) or (DeathlyShadows.known and Player:ComboPoints() < 1)) and SymbolsOfDeath:Up() and ShadowDance:Up() and MarkOfTheMasterAssassin:Down() and DeathlyShadows:Down() then
+	if Vanish:Usable() and ((MarkOfTheMasterAssassin.known and Player:ComboPointsDeficit() <= (DeeperStratagem.known and 0 or 1)) or (DeathlyShadows.known and Player:ComboPoints() < 1)) and SymbolsOfDeath:Up() and ShadowDance:Up() and MarkOfTheMasterAssassin:Down() and DeathlyShadows:Down() then
 		return UseCooldown(Vanish)
 	end
 	if ShurikenTornado:Usable(0, true) and Player.snd_condition and SymbolsOfDeath:Ready() and ShadowDance:Charges() >= 1 and Player:ComboPoints() <= 2 and (Premeditation:Down() or Player.enemies > 4) and (not Obedience.known or (Flagellation.known and Flagellation:Up()) or Player.enemies >= (1 + (not Nightstalker.known and not DarkShadow.known and 4 or 0))) then
