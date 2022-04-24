@@ -104,6 +104,10 @@ local function InitOpts()
 		trinket = true,
 		poisons = true,
 		priority_rotation = false,
+		last_poison = {
+			lethal = false,
+			nonlethal = false,
+		},
 	})
 end
 
@@ -191,6 +195,7 @@ local Player = {
 	item_use_blacklist = { -- list of item IDs with on-use effects we should mark unusable
 	},
 	main_freecast = false,
+	poison = {},
 }
 
 -- current target information
@@ -975,16 +980,24 @@ local Vigor = Ability:Add(14983, false, true)
 local Weaponmaster = Ability:Add({193537, 200733}, false, true)
 ------ Poisons
 local CripplingPoison = Ability:Add(3408, true, true)
-CripplingPoison.dot = Ability:Add(3409, false, true)
+CripplingPoison.buff_duration = 3600
+CripplingPoison.dot = Ability:Add(3409)
 CripplingPoison.dot.buff_duration = 12
 local DeadlyPoison = Ability:Add(2823, true, true)
+DeadlyPoison.buff_duration = 3600
 DeadlyPoison.dot = Ability:Add(2818, false, true)
 DeadlyPoison.dot.buff_duration = 12
 DeadlyPoison.dot.tick_interval = 2
 DeadlyPoison.dot.hasted_ticks = true
 DeadlyPoison.dot:TrackAuras()
 local InstantPoison = Ability:Add(315584, true, true)
+InstantPoison.buff_duration = 3600
+local NumbingPoison = Ability:Add(5761, true, true)
+NumbingPoison.buff_duration = 3600
+NumbingPoison.dot = Ability:Add(5760)
+NumbingPoison.dot.buff_duration = 10
 local WoundPoison = Ability:Add(8679, true, true)
+WoundPoison.buff_duration = 3600
 WoundPoison.dot = Ability:Add(8680, false, true)
 WoundPoison.dot.buff_duration = 12
 WoundPoison.dot:TrackAuras()
@@ -1459,6 +1472,31 @@ function Player:UpdateTime(timeStamp)
 	self.time = self.ctime - self.time_diff
 end
 
+function Player:UpdatePoisons()
+	if not Opt.last_poison.lethal then
+		if DeadlyPoison.known then
+			Opt.last_poison.lethal = DeadlyPoison.spellId
+		elseif InstantPoison.known then
+			Opt.last_poison.lethal = InstantPoison.spellId
+		elseif WoundPoison.known then
+			Opt.last_poison.lethal = WoundPoison.spellId
+		end
+	end
+	if not Opt.last_poison.nonlethal then
+		if CripplingPoison.known then
+			Opt.last_poison.nonlethal = CripplingPoison.spellId
+		elseif NumbingPoison.known then
+			Opt.last_poison.nonlethal = NumbingPoison.spellId
+		end
+	end
+	if Opt.last_poison.lethal then
+		self.poison.lethal = abilities.bySpellId[Opt.last_poison.lethal]
+	end
+	if Opt.last_poison.nonlethal then
+		self.poison.nonlethal = abilities.bySpellId[Opt.last_poison.nonlethal]
+	end
+end
+
 function Player:UpdateAbilities()
 	self.rescan_abilities = false
 	self.combo_points.max = UnitPowerMax('player', 4)
@@ -1537,6 +1575,7 @@ function Player:UpdateAbilities()
 	end
 
 	self.combo_points.max_spend = DeeperStratagem.known and 6 or 5
+	self:UpdatePoisons()
 end
 
 function Player:UpdateThreat()
@@ -1843,6 +1882,21 @@ function RollTheBones:Remains(rtbOnly)
 	return max
 end
 
+function InstantPoison:CastSuccess(...)
+	Ability.CastSuccess(self, ...)
+	Opt.last_poison.lethal = self.spellId
+	Player.poison.lethal = self
+end
+WoundPoison.CastSuccess = InstantPoison.CastSuccess
+DeadlyPoison.CastSuccess = InstantPoison.CastSuccess
+
+function CripplingPoison:CastSuccess(...)
+	Ability.CastSuccess(self, ...)
+	Opt.last_poison.nonlethal = self.spellId
+	Player.poison.nonlethal = self
+end
+NumbingPoison.CastSuccess = CripplingPoison.CastSuccess
+
 -- End Ability Modifications
 
 local function UseCooldown(ability, overwrite)
@@ -1876,17 +1930,11 @@ local APL = {
 APL[SPEC.ASSASSINATION].Main = function(self)
 	if Player:TimeInCombat() == 0 then
 		if Opt.poisons then
-			if WoundPoison:Up() then
-				if WoundPoison:Remains() < 300 then
-					return WoundPoison
-				end
-			elseif DeadlyPoison:Remains() < 300 then
-				return DeadlyPoison
+			if Player.poison.lethal and Player.poison.lethal:Usable() and Player.poison.lethal:Remains() < 300 then
+				return Player.poison.lethal
 			end
-			if CripplingPoison:Up() then
-				if CripplingPoison:Remains() < 300 then
-					return CripplingPoison
-				end
+			if Player.poison.nonlethal and Player.poison.nonlethal:Usable() and Player.poison.nonlethal:Remains() < 300 then
+				return Player.poison.nonlethal
 			end
 		end
 		if Trinket.BottledFlayedwingToxin.can_use and Trinket.BottledFlayedwingToxin.buff:Remains() < 300 and Trinket.BottledFlayedwingToxin:Usable() then
@@ -2087,17 +2135,11 @@ actions.precombat+=/slice_and_dice,precombat_seconds=2
 actions.precombat+=/stealth
 ]]
 		if Opt.poisons then
-			if WoundPoison:Up() then
-				if WoundPoison:Remains() < 300 then
-					return WoundPoison
-				end
-			elseif InstantPoison:Remains() < 300 then
-				return InstantPoison
+			if Player.poison.lethal and Player.poison.lethal:Usable() and Player.poison.lethal:Remains() < 300 then
+				return Player.poison.lethal
 			end
-			if CripplingPoison:Up() then
-				if CripplingPoison:Remains() < 300 then
-					return CripplingPoison
-				end
+			if Player.poison.nonlethal and Player.poison.nonlethal:Usable() and Player.poison.nonlethal:Remains() < 300 then
+				return Player.poison.nonlethal
 			end
 		end
 		if Trinket.BottledFlayedwingToxin.can_use and Trinket.BottledFlayedwingToxin.buff:Remains() < 300 and Trinket.BottledFlayedwingToxin:Usable() then
@@ -2318,17 +2360,11 @@ end
 APL[SPEC.SUBTLETY].Main = function(self)
 	if Player:TimeInCombat() == 0 then
 		if Opt.poisons then
-			if WoundPoison:Up() then
-				if WoundPoison:Remains() < 300 then
-					return WoundPoison
-				end
-			elseif InstantPoison:Remains() < 300 then
-				return InstantPoison
+			if Player.poison.lethal and Player.poison.lethal:Usable() and Player.poison.lethal:Remains() < 300 then
+				return Player.poison.lethal
 			end
-			if CripplingPoison:Up() then
-				if CripplingPoison:Remains() < 300 then
-					return CripplingPoison
-				end
+			if Player.poison.nonlethal and Player.poison.nonlethal:Usable() and Player.poison.nonlethal:Remains() < 300 then
+				return Player.poison.nonlethal
 			end
 		end
 		if Trinket.BottledFlayedwingToxin.can_use and Trinket.BottledFlayedwingToxin.buff:Remains() < 300 and Trinket.BottledFlayedwingToxin:Usable() then
