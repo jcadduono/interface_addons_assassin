@@ -1141,6 +1141,7 @@ ShadowDance.triggers_gcd = false
 local Shadowstrike = Ability:Add(185438, false, true)
 Shadowstrike.energy_cost = 40
 Shadowstrike.requires_stealth = true
+Shadowstrike:AutoAoe(false)
 local ShurikenStorm = Ability:Add(197835, false, true)
 ShurikenStorm.energy_cost = 35
 ShurikenStorm:AutoAoe(true)
