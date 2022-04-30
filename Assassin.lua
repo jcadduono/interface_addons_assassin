@@ -165,6 +165,7 @@ local Player = {
 		current = 0,
 		max = 5,
 		max_spend = 5,
+		anima_charged = {},
 	},
 	moving = false,
 	movement_speed = 100,
@@ -1179,6 +1180,7 @@ EchoingReprimand.energy_cost = 10
 EchoingReprimand[2] = Ability:Add(323558, true, true)
 EchoingReprimand[3] = Ability:Add(323559, true, true)
 EchoingReprimand[4] = Ability:Add(323560, true, true)
+EchoingReprimand[5] = Ability:Add(354838, true, true)
 EchoingReprimand.finishers = {
 	[BetweenTheEyes] = true,
 	[BlackPowder] = true,
@@ -1367,7 +1369,7 @@ function Player:EnergyTimeToMax(energy)
 end
 
 function Player:ComboPoints()
-	if EchoingReprimand.known and self.combo_points.anima_charged == self.combo_points.current then
+	if EchoingReprimand.known and self.combo_points.anima_charged[self.combo_points.current] then
 		return 7
 	end
 	return self.combo_points.current
@@ -1547,6 +1549,7 @@ function Player:UpdateAbilities()
 	EchoingReprimand[2].known = EchoingReprimand.known
 	EchoingReprimand[3].known = EchoingReprimand.known
 	EchoingReprimand[4].known = EchoingReprimand.known
+	EchoingReprimand[5].known = EchoingReprimand.known
 	if Gloomblade.known then
 		Backstab.known = false
 	end
@@ -1616,8 +1619,9 @@ function Player:Update()
 	self.energy.max = UnitPowerMax('player', 3)
 	self.energy.current = UnitPower('player', 3) + (self.energy.regen * self.execute_remains)
 	self.energy.current = min(max(self.energy.current, 0), self.energy.max)
-	self.combo_points.current = UnitPower('player', 4)
-	self.combo_points.anima_charged = EchoingReprimand.known and EchoingReprimand:AnimaCharged() or nil
+	for i = 2, 5 do
+		self.combo_points.anima_charged[i] = EchoingReprimand.known and EchoingReprimand[i]:Up()
+	end
 	self.swing.mh.remains = max(0, self.swing.mh.next - self.time - self.execute_remains)
 	self.swing.oh.remains = max(0, self.swing.oh.next - self.time - self.execute_remains)
 	speed, max_speed = GetUnitSpeed('player')
@@ -1823,8 +1827,8 @@ function Shiv:EnergyCost()
 end
 
 function EchoingReprimand:Remains()
-	local i, remains
-	for i = 2, 4 do
+	local remains
+	for i = 2, 5 do
 		remains = self[i]:Remains()
 		if remains > 0 then
 			return remains
@@ -1833,26 +1837,15 @@ function EchoingReprimand:Remains()
 	return 0
 end
 
-function EchoingReprimand:AnimaCharged(cp)
-	if cp then
-		return EchoingReprimand[cp] and EchoingReprimand[cp]:Up() and cp or nil
-	end
-	local i
-	for i = 2, 4 do
-		if self[i]:Up() then
-			return i
-		end
-	end
-end
-
 EchoingReprimand[2].Remains = function(self)
-	if EchoingReprimand.consumed then
+	if self.consumed then
 		return 0 -- BUG: the buff remains for a second or so after it is consumed
 	end
 	return Ability.Remains(self)
 end
 EchoingReprimand[3].Remains = EchoingReprimand[2].Remains
 EchoingReprimand[4].Remains = EchoingReprimand[2].Remains
+EchoingReprimand[5].Remains = EchoingReprimand[2].Remains
 
 Broadside.Remains = function(self, rtbOnly)
 	if rtbOnly and self.trigger ~= RollTheBones then
@@ -2311,7 +2304,7 @@ actions.finish=slice_and_dice,if=buff.slice_and_dice.remains<fight_remains&refre
 actions.finish+=/between_the_eyes,if=target.time_to_die>3
 actions.finish+=/dispatch
 ]]
-	if SliceAndDice:Usable() and SliceAndDice:Refreshable() and (Player.enemies > 1 or SliceAndDice:Remains() < Target.timeToDie) then
+	if SliceAndDice:Usable() and SliceAndDice:Refreshable() and (Player.enemies > 1 or SliceAndDice:Remains() < Target.timeToDie) and (not Player.combo_points.anima_charged[Player.combo_points.current] or SliceAndDice:Down()) then
 		return SliceAndDice
 	end
 	if BetweenTheEyes:Usable(Player:EnergyTimeToMax(50), true) and Target.timeToDie > 3 then
@@ -2344,7 +2337,7 @@ actions.build+=/gouge,if=talent.dirty_tricks.enabled&combo_points.deficit>=1+buf
 	if TinyToxicBlade.known and Shiv:Usable() then
 		return Shiv
 	end
-	if EchoingReprimand:Usable() then
+	if EchoingReprimand:Usable() and EchoingReprimand:Down() then
 		return EchoingReprimand
 	end
 	if SerratedBoneSpike:Usable() and (Target.timeToDie < 5 or SerratedBoneSpike:ChargesFractional() >= 2.75 or (SliceAndDice:Up() and SerratedBoneSpike:Down())) then
@@ -2540,7 +2533,7 @@ actions.cds+=/use_items,if=buff.symbols_of_death.up|fight_remains<20
 		if ShadowBlades:Usable() and ShadowBlades:Down() and Player:ComboPointsDeficit() >= 2 and (SymbolsOfDeath:Ready(1) or SymbolsOfDeath:Up() or (Target.boss and Target.timeToDie < 20)) then
 			return UseCooldown(ShadowBlades)
 		end
-		if EchoingReprimand:Usable() and Player:ComboPointsDeficit() >= 2 and (Player.use_priority_rotation or Player.enemies <= 4 or ResoundingClarity.known) then
+		if EchoingReprimand:Usable() and EchoingReprimand:Down() and Player:ComboPointsDeficit() >= 2 and (Player.use_priority_rotation or Player.enemies <= 4 or ResoundingClarity.known) then
 			return UseCooldown(EchoingReprimand)
 		end
 		if ShurikenTornado:Usable() and ShadowFocus.known and SymbolsOfDeath:Up() and Player:ComboPoints() <= 2 and (Premeditation:Down() or Player.enemies > 4) then
@@ -2624,7 +2617,7 @@ actions.finish+=/black_powder,if=!variable.use_priority_rotation&spell_targets>=
 actions.finish+=/eviscerate
 ]]
 	Player.premed_snd_condition = Premeditation.known and Player.enemies < (SerratedBoneSpike.known and 5 or 4) and not EchoingReprimand.known
-	if SliceAndDice:Usable() then
+	if SliceAndDice:Usable() and not Player.combo_points.anima_charged[Player.combo_points.current] then
 		if not Player.premed_snd_condition and Player.enemies < 6 and SliceAndDice:Refreshable() and ShadowDance:Down() and SliceAndDice:Remains() < Target.timeToDie then
 			return SliceAndDice
 		end
@@ -3032,7 +3025,6 @@ function UI:UpdateDisplay()
 
 	assassinPanel.dimmer:SetShown(dim)
 	assassinPanel.text.center:SetText(text_center)
-	assassinPanel.text.tl:SetText(Player.combo_points.anima_charged)
 	--assassinPanel.text.bl:SetText(format('%.1fs', Target.timeToDie))
 	assassinCooldownPanel.text:SetText(text_cd)
 	assassinCooldownPanel.dimmer:SetShown(dim_cd)
@@ -3133,7 +3125,6 @@ CombatEvent.TRIGGER = function(timeStamp, event, _, srcGUID, _, _, _, dstGUID, _
 	   e == 'SPELL_CAST_START' or
 	   e == 'SPELL_CAST_SUCCESS' or
 	   e == 'SPELL_CAST_FAILED' or
-	   e == 'SPELL_AURA_REMOVED' or
 	   e == 'SPELL_DAMAGE' or
 	   e == 'SPELL_PERIODIC_DAMAGE' or
 	   e == 'SPELL_MISSED' or
@@ -3259,6 +3250,7 @@ end
 
 function events:UNIT_POWER_UPDATE(srcName, powerType)
 	if srcName == 'player' and powerType == 'COMBO_POINTS' then
+		Player.combo_points.current = UnitPower('player', 4)
 		UI:UpdateCombatWithin(0.05)
 	end
 end
@@ -3288,8 +3280,8 @@ function events:UNIT_SPELLCAST_SENT(srcName, destName, castGUID, spellId)
 	if RollTheBones.known and (ability == RollTheBones or (CountTheOdds.known and (ability == Ambush or ability == Dispatch))) then
 		RollTheBones.next_trigger = ability
 	end
-	if EchoingReprimand.known and Player.combo_points.anima_charged == Player.combo_points.current and EchoingReprimand.finishers[ability] then
-		EchoingReprimand.consume_castGUID = castGUID
+	if EchoingReprimand.known and EchoingReprimand.finishers[ability] and Player.combo_points.anima_charged[Player.combo_points.current] then
+		EchoingReprimand[Player.combo_points.current].consume_castGUID = castGUID
 	end
 end
 
@@ -3305,12 +3297,14 @@ function events:UNIT_SPELLCAST_SUCCEEDED(unitID, castGUID, spellId)
 		ability.next_castGUID = castGUID
 	end
 	if EchoingReprimand.known then
-		if ability == EchoingReprimand then
-			EchoingReprimand.consume_castGUID = nil
-			EchoingReprimand.consumed = false
-		elseif castGUID == EchoingReprimand.consume_castGUID then
-			EchoingReprimand.consume_castGUID = nil
-			EchoingReprimand.consumed = true
+		for i = 2, 5 do
+			if ability == EchoingReprimand then
+				EchoingReprimand[i].consume_castGUID = nil
+				EchoingReprimand[i].consumed = false
+			elseif castGUID == EchoingReprimand[i].consume_castGUID then
+				EchoingReprimand[i].consume_castGUID = nil
+				EchoingReprimand[i].consumed = true
+			end
 		end
 	end
 end
