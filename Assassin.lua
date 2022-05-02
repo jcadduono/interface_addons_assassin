@@ -803,14 +803,6 @@ function Ability:Targets()
 	return 0
 end
 
-function Ability:CastStart(dstGUID)
-	return
-end
-
-function Ability:CastFailed(dstGUID, missType)
-	return
-end
-
 function Ability:CastSuccess(dstGUID)
 	self.last_used = Player.time
 	Player.last_ability = self
@@ -1143,6 +1135,7 @@ local Shadowstrike = Ability:Add(185438, false, true)
 Shadowstrike.energy_cost = 40
 Shadowstrike.requires_stealth = true
 Shadowstrike:AutoAoe(false)
+local ShadowTechniques = Ability:Add(196912, true, true, 196911)
 local ShurikenStorm = Ability:Add(197835, false, true)
 ShurikenStorm.energy_cost = 35
 ShurikenStorm:AutoAoe(true)
@@ -1216,7 +1209,8 @@ SummonSteward.cooldown_duration = 300
 -- Soulbind conduits
 local CountTheOdds = Ability:Add(341546, true, true)
 CountTheOdds.conduit_id = 244
-local PerforatedVeins = Ability:Add(341567, true, true)
+local PerforatedVeins = Ability:Add(341567, true, true, 341572)
+PerforatedVeins.buff_duration = 12
 PerforatedVeins.conduit_id = 248
 -- Legendary effects
 local AkaarisSoulFragment = Ability:Add(340090, false, true)
@@ -1400,6 +1394,9 @@ function Player:ResetSwing(mainHand, offHand, missed)
 		self.swing.oh.last = self.time
 		self.swing.oh.next = self.time + self.swing.oh.speed
 	end
+	if ShadowTechniques.known and not missed then
+		ShadowTechniques.auto_count = ShadowTechniques.auto_count + 1
+	end
 end
 
 function Player:TimeInCombat()
@@ -1565,6 +1562,7 @@ function Player:UpdateAbilities()
 	if KevinsOozeling.known then
 		KevinsWrath.known = true
 	end
+	ShadowTechniques.auto_count = 0
 
 	wipe(abilities.bySpellId)
 	wipe(abilities.velocity)
@@ -1884,6 +1882,23 @@ function RollTheBones:Remains(rtbOnly)
 		end
 	end
 	return max
+end
+
+function ShadowTechniques:Energize(amount, overCap, powerType)
+	if powerType ~= 4 then
+		return
+	end
+	self.auto_count = 0
+end
+
+function ShadowTechniques:TimeTo(autoCount)
+	if autoCount <= self.auto_count then
+		return 0
+	end
+	if autoCount - self.auto_count == 1 then
+		return min(Player.swing.mh.remains, Player.swing.oh.remains)
+	end
+	return autoCount - self.auto_count
 end
 
 function InstantPoison:CastSuccess(...)
@@ -2465,6 +2480,9 @@ actions+=/bag_of_tricks
 	self.snd_condition = Player.enemies >= 6 or SliceAndDice:Up()
 	self.is_next_cp_animacharged = EchoingReprimand.known and Player.combo_points.anima_charged[Player.combo_points.current + 1]
 	self.effective_combo_points = Player:ComboPoints()
+	if EchoingReprimand.known and self.effective_combo_points > Player.combo_points.current and Player:ComboPointsDeficit() > 2 and ShadowTechniques:TimeTo(4) < 0.5 and not self.is_next_cp_animacharged then
+		self.effective_combo_points = Player.combo_points.current
+	end
 	self.use_priority_rotation = Opt.priority_rotation and Player.enemies >= 2
 	self:cds()
 	if SliceAndDice:Usable() and Player.enemies < 6 and (Target.timeToDie > 6 or Player.enemies > 1) and SliceAndDice:Remains() < 1 and Player.combo_points.current >= (Player:TimeInCombat() < 10 and 2 or 4) then
@@ -2713,7 +2731,7 @@ actions.build+=/backstab,if=!covenant.kyrian|!(variable.is_next_cp_animacharged&
 	if Gloomblade:Usable() then
 		return Gloomblade
 	end
-	if Backstab:Usable() then
+	if Backstab:Usable() and (not EchoingReprimand.known or not (self.is_next_cp_animacharged and (ShadowTechniques:TimeTo(3) < 0.5 or ShadowTechniques:TimeTo(4) < 1) and Player:Energy() < 60)) then
 		return Backstab
 	end
 end
@@ -3178,6 +3196,7 @@ CombatEvent.TRIGGER = function(timeStamp, event, _, srcGUID, _, _, _, dstGUID, _
 	   e == 'SPELL_CAST_SUCCESS' or
 	   e == 'SPELL_CAST_FAILED' or
 	   e == 'SPELL_DAMAGE' or
+	   e == 'SPELL_ENERGIZE' or
 	   e == 'SPELL_PERIODIC_DAMAGE' or
 	   e == 'SPELL_MISSED' or
 	   e == 'SPELL_AURA_APPLIED' or
@@ -3226,7 +3245,7 @@ CombatEvent.SWING_MISSED = function(event, srcGUID, dstGUID, missType, offHand, 
 	end
 end
 
-CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellSchool, missType)
+CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellSchool, missType, overCap, powerType)
 	if srcGUID ~= Player.guid then
 		return
 	end
@@ -3239,14 +3258,13 @@ CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellS
 
 	UI:UpdateCombatWithin(0.05)
 	if event == 'SPELL_CAST_SUCCESS' then
-		ability:CastSuccess(dstGUID)
-		return
+		return ability:CastSuccess(dstGUID)
 	elseif event == 'SPELL_CAST_START' then
-		ability:CastStart(dstGUID)
-		return
-	elseif event == 'SPELL_CAST_FAILED' then
-		ability:CastFailed(dstGUID, missType)
-		return
+		return ability.CastStart and ability:CastStart(dstGUID)
+	elseif event == 'SPELL_CAST_FAILED'  then
+		return ability.CastFailed and ability:CastFailed(dstGUID, missType)
+	elseif event == 'SPELL_ENERGIZE' then
+		return ability.Energize and ability:Energize(missType, overCap, powerType)
 	end
 	if ability.aura_targets then
 		if event == 'SPELL_AURA_APPLIED' then
@@ -3258,7 +3276,7 @@ CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellS
 		end
 	end
 	if dstGUID == Player.guid then
-		if eventType == 'SPELL_AURA_APPLIED' or eventType == 'SPELL_AURA_REFRESH' then
+		if event == 'SPELL_AURA_APPLIED' or event == 'SPELL_AURA_REFRESH' then
 			if RollTheBones.known and RollTheBones.buffs[ability] then
 				ability.trigger = RollTheBones.next_trigger
 			end
