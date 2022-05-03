@@ -2670,7 +2670,7 @@ actions.finish+=/slice_and_dice,if=variable.premed_snd_condition&cooldown.shadow
 # Helper Variable for Rupture. Skip during Master Assassin or during Dance with Dark and no Nightstalker.
 actions.finish+=/variable,name=skip_rupture,value=master_assassin_remains>0|!talent.nightstalker.enabled&talent.dark_shadow.enabled&buff.shadow_dance.up|spell_targets.shuriken_storm>=(4-stealthed.all*talent.shadow_focus.enabled)
 # Keep up Rupture if it is about to run out.
-actions.finish+=/rupture,if=!stealthed.all&(!variable.skip_rupture|variable.use_priority_rotation)&target.time_to_die-remains>6&refreshable
+actions.finish+=/rupture,if=(!stealthed.all|!remains)&(!variable.skip_rupture|variable.use_priority_rotation)&target.time_to_die-remains>6&refreshable
 actions.finish+=/secret_technique
 # Multidotting targets that will live for the duration of Rupture, refresh during pandemic.
 actions.finish+=/rupture,cycle_targets=1,if=!variable.skip_rupture&!variable.use_priority_rotation&spell_targets.shuriken_storm>=2&target.time_to_die>=(5+(2*combo_points))&refreshable
@@ -2690,7 +2690,7 @@ actions.finish+=/eviscerate
 	end
 	self.use_rupture = Rupture:Refreshable() and Target.timeToDie >= (Rupture:Remains() + ((4 * self.effective_combo_points) * Player.haste_factor))
 	self.skip_rupture = (MarkOfTheMasterAssassin.known and MarkOfTheMasterAssassin:Up()) or (not Nightstalker.known and DarkShadow.known and ShadowDance:Up()) or Player.enemies >= (Player.stealthed and ShadowFocus.known and 3 or 4)
-	if self.use_rupture and Rupture:Usable(0, true) and not Player.stealthed and (not self.skip_rupture or self.use_priority_rotation) then
+	if self.use_rupture and Rupture:Usable(0, true) and (not Player.stealthed or Rupture:Down()) and (not self.skip_rupture or self.use_priority_rotation) then
 		return Pool(Rupture)
 	end
 	if SecretTechnique:Usable(0, true) then
