@@ -15,6 +15,7 @@ local GetSpellCooldown = _G.GetSpellCooldown
 local GetSpellInfo = _G.GetSpellInfo
 local GetTime = _G.GetTime
 local GetUnitSpeed = _G.GetUnitSpeed
+local UnitAttackSpeed = _G.UnitAttackSpeed
 local UnitAura = _G.UnitAura
 local UnitCastingInfo = _G.UnitCastingInfo
 local UnitChannelInfo = _G.UnitChannelInfo
@@ -152,6 +153,7 @@ local Player = {
 	cast_remains = 0,
 	execute_remains = 0,
 	haste_factor = 1,
+	moving = false,
 	health = {
 		current = 0,
 		max = 100,
@@ -167,8 +169,6 @@ local Player = {
 		max_spend = 5,
 		anima_charged = {},
 	},
-	moving = false,
-	movement_speed = 100,
 	threat = {
 		status = 0,
 		pct = 0,
@@ -177,13 +177,11 @@ local Player = {
 	swing = {
 		mh = {
 			last = 0,
-			next = 0,
 			speed = 0,
 			remains = 0,
 		},
 		oh = {
 			last = 0,
-			next = 0,
 			speed = 0,
 			remains = 0,
 		},
@@ -1387,12 +1385,10 @@ function Player:ResetSwing(mainHand, offHand, missed)
 	if mainHand then
 		self.swing.mh.speed = (mh or 0)
 		self.swing.mh.last = self.time
-		self.swing.mh.next = self.time + self.swing.mh.speed
 	end
 	if offHand then
 		self.swing.oh.speed = (oh or 0)
 		self.swing.oh.last = self.time
-		self.swing.oh.next = self.time + self.swing.oh.speed
 	end
 	if ShadowTechniques.known and not missed then
 		ShadowTechniques.auto_count = ShadowTechniques.auto_count + 1
@@ -1605,7 +1601,7 @@ function Player:UpdateThreat()
 end
 
 function Player:Update()
-	local _, start, duration, remains, spellId, speed, max_speed
+	local _, start, duration, remains, spellId, speed_mh, speed_oh
 	self.main =  nil
 	self.cd = nil
 	self.interrupt = nil
@@ -1628,11 +1624,12 @@ function Player:Update()
 	for i = 2, 5 do
 		self.combo_points.anima_charged[i] = EchoingReprimand.known and EchoingReprimand[i]:Up()
 	end
-	self.swing.mh.remains = max(0, self.swing.mh.next - self.time - self.execute_remains)
-	self.swing.oh.remains = max(0, self.swing.oh.next - self.time - self.execute_remains)
-	speed, max_speed = GetUnitSpeed('player')
-	self.moving = speed ~= 0
-	self.movement_speed = max_speed / 7 * 100
+	speed_mh, speed_oh = UnitAttackSpeed('player')
+	self.swing.mh.speed = speed_mh or 0
+	self.swing.oh.speed = speed_oh or 0
+	self.swing.mh.remains = max(0, self.swing.mh.last + self.swing.mh.speed - self.time)
+	self.swing.oh.remains = max(0, self.swing.oh.last + self.swing.oh.speed - self.time)
+	self.moving = GetUnitSpeed('player') ~= 0
 	self.stealthed = Stealth:Up() or Vanish:Up() or (ShadowDance.known and ShadowDance:Up()) or (Sepsis.known and Sepsis.buff:Up()) or (Shadowmeld.known and Shadowmeld:Up())
 	self:UpdateThreat()
 
@@ -1895,10 +1892,16 @@ function ShadowTechniques:TimeTo(autoCount)
 	if autoCount <= self.auto_count then
 		return 0
 	end
-	if autoCount - self.auto_count == 1 then
-		return min(Player.swing.mh.remains, Player.swing.oh.remains)
+	if Player.swing.oh.speed > 0 then
+		if autoCount - self.auto_count == 1 then
+			return max(0, min(Player.swing.mh.remains, Player.swing.oh.remains) - Player.execute_remains)
+		end
+		return max(0, (autoCount - self.auto_count) * ((Player.swing.mh.speed + Player.swing.oh.speed) / 2 / 2) - min(Player.swing.mh.remains, Player.swing.oh.remains) - Player.execute_remains)
 	end
-	return autoCount - self.auto_count
+	if autoCount - self.auto_count == 1 then
+		return max(0, Player.swing.mh.remains - Player.execute_remains)
+	end
+	return max(0, (autoCount - self.auto_count) * Player.swing.mh.speed - Player.swing.mh.remains - Player.execute_remains)
 end
 
 function InstantPoison:CastSuccess(...)
@@ -3318,9 +3321,9 @@ function events:UNIT_FLAGS(unitID)
 	end
 end
 
-function events:UNIT_POWER_UPDATE(srcName, powerType)
-	if srcName == 'player' and powerType == 'COMBO_POINTS' then
-		Player.combo_points.current = UnitPower('player', 4)
+function events:UNIT_POWER_UPDATE(unitId, powerType)
+	if unitId == 'player' and powerType == 'COMBO_POINTS' then
+		Player.combo_points.current = UnitPower(unitId, 4)
 		UI:UpdateCombatWithin(0.05)
 	end
 end
@@ -3339,7 +3342,7 @@ end
 events.UNIT_SPELLCAST_FAILED = events.UNIT_SPELLCAST_STOP
 events.UNIT_SPELLCAST_INTERRUPTED = events.UNIT_SPELLCAST_STOP
 
-function events:UNIT_SPELLCAST_SENT(srcName, destName, castGUID, spellId)
+function events:UNIT_SPELLCAST_SENT(unitId, destName, castGUID, spellId)
 	if unitID ~= 'player' or not spellId or castGUID:sub(6, 6) ~= '3' then
 		return
 	end
@@ -3439,11 +3442,12 @@ function events:PLAYER_EQUIPMENT_CHANGED()
 
 	Player.set_bonus.t28 = (Player:Equipped(188901) and 1 or 0) + (Player:Equipped(188902) and 1 or 0) + (Player:Equipped(188903) and 1 or 0) + (Player:Equipped(188905) and 1 or 0) + (Player:Equipped(188907) and 1 or 0)
 
+	Player:ResetSwing(true, true)
 	Player:UpdateAbilities()
 end
 
-function events:PLAYER_SPECIALIZATION_CHANGED(unitName)
-	if unitName ~= 'player' then
+function events:PLAYER_SPECIALIZATION_CHANGED(unitId)
+	if unitId ~= 'player' then
 		return
 	end
 	Player.spec = GetSpecialization() or 0
