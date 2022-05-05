@@ -2487,6 +2487,9 @@ actions+=/bag_of_tricks
 		self.effective_combo_points = Player.combo_points.current
 	end
 	self.use_priority_rotation = Opt.priority_rotation and Player.enemies >= 2
+	if Shadowmeld.known and Stealth:Usable() and Shadowmeld:Up() then
+		return Stealth
+	end
 	self:cds()
 	if SliceAndDice:Usable() and Player.enemies < 6 and (Target.timeToDie > 6 or Player.enemies > 1) and SliceAndDice:Remains() < 1 and Player.combo_points.current >= (Player:TimeInCombat() < 10 and 2 or 4) then
 		return SliceAndDice
@@ -2566,7 +2569,7 @@ actions.cds+=/use_items,if=buff.symbols_of_death.up|fight_remains<20
 	if Vanish:Usable() and ((MarkOfTheMasterAssassin.known and Player:ComboPointsDeficit() <= (DeeperStratagem.known and 0 or 1)) or (DeathlyShadows.known and Player.combo_points.current < 1)) and SymbolsOfDeath:Up() and ShadowDance:Up() and MarkOfTheMasterAssassin:Down() and DeathlyShadows:Down() then
 		return UseCooldown(Vanish)
 	end
-	if ShurikenTornado:Usable(0, true) and Player.enemies <= 1 and self.snd_condition and SymbolsOfDeath:Ready() and ShadowDance:Charges() >= 1 and (not Obedience.known or Flagellation.debuff:Up() or Player.enemies >= (1 + (not Nightstalker.known and not DarkShadow.known and 4 or 0))) and Player.combo_points.current <= 2 and Premeditation:Down() and (not Flagellation.known or not Flagellation:Ready()) then
+	if ShurikenTornado:Usable(0, true) and Player.enemies <= 1 and self.snd_condition and not (Stealth:Up() or Vanish:Up() or Shadowmeld:Up()) and SymbolsOfDeath:Ready() and ShadowDance:Charges() >= 1 and (not Obedience.known or Flagellation.debuff:Up() or Player.enemies >= (1 + (not Nightstalker.known and not DarkShadow.known and 4 or 0))) and Player.combo_points.current <= 2 and Premeditation:Down() and (not Flagellation.known or not Flagellation:Ready()) then
 		if not ShadowFocus.known then
 			Player.pool_energy = 60
 			return UseCooldown(ShurikenTornado)
@@ -2622,10 +2625,10 @@ APL[SPEC.SUBTLETY].stealth_cds = function(self)
 actions.stealth_cds=variable,name=shd_threshold,value=cooldown.shadow_dance.charges_fractional>=(1.75-0.75*(covenant.kyrian&set_bonus.tier28_2pc&cooldown.symbols_of_death.remains>=8))
 actions.stealth_cds+=/variable,name=shd_threshold,if=runeforge.the_rotten,value=cooldown.shadow_dance.charges_fractional>=1.75|cooldown.symbols_of_death.remains>=16
 # Vanish if we are capping on Dance charges. Early before first dance if we have no Nightstalker but Dark Shadow in order to get Rupture up (no Master Assassin).
-actions.stealth_cds+=/vanish,if=(!variable.shd_threshold|!talent.nightstalker.enabled&talent.dark_shadow.enabled)&combo_points.deficit>1&!runeforge.mark_of_the_master_assassin
+actions.stealth_cds+=/vanish,if=(!variable.shd_threshold|!talent.nightstalker.enabled&talent.dark_shadow.enabled)&combo_points.deficit>1&!runeforge.mark_of_the_master_assassin&buff.perforated_veins.stack<6
 # Pool for Shadowmeld + Shadowstrike unless we are about to cap on Dance charges. Only when Find Weakness is about to run out.
 actions.stealth_cds+=/pool_resource,for_next=1,extra_amount=40,if=race.night_elf
-actions.stealth_cds+=/shadowmeld,if=energy>=40&energy.deficit>=10&!variable.shd_threshold&combo_points.deficit>1
+actions.stealth_cds+=/shadowmeld,if=energy>=40&energy.deficit>=10&!variable.shd_threshold&combo_points.deficit>1&buff.perforated_veins.stack<6
 # CP thresholds for entering Shadow Dance
 actions.stealth_cds+=/variable,name=shd_combo_points,value=combo_points.deficit>=2+buff.shadow_blades.up
 actions.stealth_cds+=/variable,name=shd_combo_points,value=combo_points.deficit>=3,if=covenant.kyrian
@@ -2641,10 +2644,10 @@ actions.stealth_cds+=/shadow_dance,if=variable.shd_combo_points&fight_remains<co
 	else
 		self.shd_threshold = ShadowDance:ChargesFractional() >= ((EchoingReprimand.known and Player.set_bonus.t28 >= 2 and not SymbolsOfDeath:Ready(8)) and 1 or 1.75)
 	end
-	if Vanish:Usable() and not MarkOfTheMasterAssassin.known and (not self.shd_threshold or not Nightstalker.known and DarkShadow.known) and Player:ComboPointsDeficit() > 1 then
+	if Vanish:Usable() and not MarkOfTheMasterAssassin.known and (not self.shd_threshold or not Nightstalker.known and DarkShadow.known) and Player:ComboPointsDeficit() > 1 and (not PerforatedVeins.known or PerforatedVeins:Stack() < 6) then
 		return UseCooldown(Vanish)
 	end
-	if Shadowmeld:Usable() and not self.shd_threshold and Player:EnergyDeficit() >= 10 and Player:ComboPointsDeficit() > 1 then
+	if Shadowmeld:Usable() and not self.shd_threshold and Player:EnergyDeficit() >= 10 and Player:ComboPointsDeficit() > 1 and (not PerforatedVeins.known or PerforatedVeins:Stack() < 6) then
 		Player.pool_energy = 80
 		return UseCooldown(Shadowmeld)
 	end
