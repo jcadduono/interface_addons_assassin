@@ -514,8 +514,8 @@ function Ability:Add(spellId, buff, player, spellId2)
 		max_range = 40,
 		velocity = 0,
 		last_used = 0,
-		auraTarget = buff and 'player' or 'target',
-		auraFilter = (buff and 'HELPFUL' or 'HARMFUL') .. (player and '|PLAYER' or '')
+		aura_target = buff and 'player' or 'target',
+		aura_filter = (buff and 'HELPFUL' or 'HARMFUL') .. (player and '|PLAYER' or '')
 	}
 	setmetatable(ability, self)
 	abilities.all[#abilities.all + 1] = ability
@@ -562,7 +562,7 @@ function Ability:Remains()
 	end
 	local _, id, expires
 	for i = 1, 40 do
-		_, _, _, _, _, expires, _, _, _, id = UnitAura(self.auraTarget, i, self.auraFilter)
+		_, _, _, _, _, expires, _, _, _, id = UnitAura(self.aura_target, i, self.aura_filter)
 		if not id then
 			return 0
 		elseif self:Match(id) then
@@ -582,12 +582,12 @@ function Ability:Refreshable()
 	return self:Down()
 end
 
-function Ability:Up(condition)
-	return self:Remains(condition) > 0
+function Ability:Up(...)
+	return self:Remains(...) > 0
 end
 
-function Ability:Down(condition)
-	return self:Remains(condition) <= 0
+function Ability:Down(...)
+	return self:Remains(...) <= 0
 end
 
 function Ability:SetVelocity(velocity)
@@ -663,7 +663,7 @@ end
 function Ability:Stack()
 	local _, id, expires, count
 	for i = 1, 40 do
-		_, _, count, _, _, expires, _, _, _, id = UnitAura(self.auraTarget, i, self.auraFilter)
+		_, _, count, _, _, expires, _, _, _, id = UnitAura(self.aura_target, i, self.aura_filter)
 		if not id then
 			return 0
 		elseif self:Match(id) then
@@ -733,7 +733,7 @@ end
 function Ability:CastTime()
 	local _, _, _, castTime = GetSpellInfo(self.spellId)
 	if castTime == 0 then
-		return self.triggers_gcd and Player.gcd or 0
+		return 0
 	end
 	return castTime / 1000
 end
@@ -811,7 +811,7 @@ function Ability:CastSuccess(dstGUID)
 		table.insert(Player.previous_gcd, 1, self)
 	end
 	if self.aura_targets and self.requires_react then
-		self:RemoveAura(self.auraTarget == 'player' and Player.guid or dstGUID)
+		self:RemoveAura(self.aura_target == 'player' and Player.guid or dstGUID)
 	end
 	if Opt.auto_aoe and self.auto_aoe and self.auto_aoe.trigger == 'SPELL_CAST_SUCCESS' then
 		autoAoe:Add(dstGUID, true)
@@ -1079,7 +1079,7 @@ local Dreadblades = Ability:Add(343142, false, true)
 Dreadblades.buff_duration = 10
 Dreadblades.cooldown_duration = 90
 Dreadblades.energy_cost = 30
-Dreadblades.auraTarget = 'player'
+Dreadblades.aura_target = 'player'
 local GhostlyStrike = Ability:Add(196937, false, true)
 GhostlyStrike.buff_duration = 10
 GhostlyStrike.cooldown_duration = 35
@@ -1432,10 +1432,7 @@ function Player:BloodlustActive()
 end
 
 function Player:Equipped(itemID, slot)
-	if slot then
-		return GetInventoryItemID('player', slot) == itemID, slot
-	end
-	for i = 1, 19 do
+	for i = (slot or 1), (slot or 19) do
 		if GetInventoryItemID('player', i) == itemID then
 			return true, i
 		end
@@ -1443,9 +1440,9 @@ function Player:Equipped(itemID, slot)
 	return false
 end
 
-function Player:BonusIdEquipped(bonusId)
+function Player:BonusIdEquipped(bonusId, slot)
 	local link, item
-	for i = 1, 19 do
+	for i = (slot or 1), (slot or 19) do
 		link = GetInventoryItemLink('player', i)
 		if link then
 			item = link:match('Hitem:%d+:([%d:]+)')
@@ -1507,7 +1504,7 @@ function Player:UpdateAbilities()
 		ability.known = false
 		for _, spellId in next, ability.spellIds do
 			ability.spellId, ability.name, _, ability.icon = spellId, GetSpellInfo(spellId)
-			if IsPlayerSpell(spellId) then
+			if IsPlayerSpell(spellId) or (ability.learn_spellId and IsPlayerSpell(ability.learn_spellId)) then
 				ability.known = true
 				break
 			end
@@ -1515,7 +1512,7 @@ function Player:UpdateAbilities()
 		if C_LevelLink.IsSpellLocked(ability.spellId) then
 			ability.known = false -- spell is locked, do not mark as known
 		end
-		if ability.bonus_id then -- used for checking Legendary crafted effects
+		if ability.bonus_id then -- used for checking enchants and Legendary crafted effects
 			ability.known = self:BonusIdEquipped(ability.bonus_id)
 		end
 		if ability.conduit_id then
@@ -1959,10 +1956,10 @@ APL[SPEC.ASSASSINATION].Main = function(self)
 				return Player.poison.nonlethal
 			end
 		end
-		if Trinket.BottledFlayedwingToxin.can_use and Trinket.BottledFlayedwingToxin.buff:Remains() < 300 and Trinket.BottledFlayedwingToxin:Usable() then
+		if Trinket.BottledFlayedwingToxin:Usable() and Trinket.BottledFlayedwingToxin.buff:Remains() < 300 then
 			UseCooldown(Trinket.BottledFlayedwingToxin)
 		end
-		if Trinket.SoleahsSecretTechnique.can_use and Trinket.SoleahsSecretTechnique.buff:Remains() < 300 and Trinket.SoleahsSecretTechnique:Usable() and Player.group_size > 1 then
+		if Trinket.SoleahsSecretTechnique:Usable() and Trinket.SoleahsSecretTechnique.buff:Remains() < 300 and Player.group_size > 1 then
 			UseCooldown(Trinket.SoleahsSecretTechnique)
 		end
 		if SummonSteward:Usable() and PhialOfSerenity:Charges() < 1 then
@@ -1973,7 +1970,7 @@ APL[SPEC.ASSASSINATION].Main = function(self)
 				UseCooldown(EternalAugmentRune)
 			end
 			if EternalFlask:Usable() and EternalFlask.buff:Remains() < 300 and SpectralFlaskOfPower.buff:Remains() < 300 then
-				UseCooldown(SpectralFlaskOfPower)
+				UseCooldown(EternalFlask)
 			end
 			if Opt.pot and SpectralFlaskOfPower:Usable() and SpectralFlaskOfPower.buff:Remains() < 300 and EternalFlask.buff:Remains() < 300 then
 				UseCooldown(SpectralFlaskOfPower)
@@ -1981,6 +1978,13 @@ APL[SPEC.ASSASSINATION].Main = function(self)
 		end
 		if not Player.stealthed then
 			return Stealth
+		end
+	else
+		if Trinket.BottledFlayedwingToxin:Usable() and Trinket.BottledFlayedwingToxin.buff:Remains() < 10 then
+			UseExtra(Trinket.BottledFlayedwingToxin)
+		end
+		if Trinket.SoleahsSecretTechnique:Usable() and Trinket.SoleahsSecretTechnique.buff:Remains() < 10 and Player.group_size > 1 then
+			UseExtra(Trinket.SoleahsSecretTechnique)
 		end
 	end
 	Player.energy_regen_combined = Player.energy.regen + (Garrote:TickingPoisoned() + Rupture:TickingPoisoned()) * (VenomRush.known and 10 or 7) / 2
@@ -2173,10 +2177,10 @@ actions.precombat+=/stealth
 				return Player.poison.nonlethal
 			end
 		end
-		if Trinket.BottledFlayedwingToxin.can_use and Trinket.BottledFlayedwingToxin.buff:Remains() < 300 and Trinket.BottledFlayedwingToxin:Usable() then
+		if Trinket.BottledFlayedwingToxin:Usable() and Trinket.BottledFlayedwingToxin.buff:Remains() < 300 then
 			UseCooldown(Trinket.BottledFlayedwingToxin)
 		end
-		if Trinket.SoleahsSecretTechnique.can_use and Trinket.SoleahsSecretTechnique.buff:Remains() < 300 and Trinket.SoleahsSecretTechnique:Usable() and Player.group_size > 1 then
+		if Trinket.SoleahsSecretTechnique:Usable() and Trinket.SoleahsSecretTechnique.buff:Remains() < 300 and Player.group_size > 1 then
 			UseCooldown(Trinket.SoleahsSecretTechnique)
 		end
 		if SummonSteward:Usable() and PhialOfSerenity:Charges() < 1 then
@@ -2187,7 +2191,7 @@ actions.precombat+=/stealth
 				UseCooldown(EternalAugmentRune)
 			end
 			if EternalFlask:Usable() and EternalFlask.buff:Remains() < 300 and SpectralFlaskOfPower.buff:Remains() < 300 then
-				UseCooldown(SpectralFlaskOfPower)
+				UseCooldown(EternalFlask)
 			end
 			if Opt.pot and SpectralFlaskOfPower:Usable() and SpectralFlaskOfPower.buff:Remains() < 300 and EternalFlask.buff:Remains() < 300 then
 				UseCooldown(SpectralFlaskOfPower)
@@ -2204,6 +2208,13 @@ actions.precombat+=/stealth
 		end
 		if not Player.stealthed then
 			return Stealth
+		end
+	else
+		if Trinket.BottledFlayedwingToxin:Usable() and Trinket.BottledFlayedwingToxin.buff:Remains() < 10 then
+			UseExtra(Trinket.BottledFlayedwingToxin)
+		end
+		if Trinket.SoleahsSecretTechnique:Usable() and Trinket.SoleahsSecretTechnique.buff:Remains() < 10 and Player.group_size > 1 then
+			UseExtra(Trinket.SoleahsSecretTechnique)
 		end
 	end
 --[[
@@ -2412,10 +2423,10 @@ actions.precombat+=/shadow_blades,if=runeforge.mark_of_the_master_assassin
 				return Player.poison.nonlethal
 			end
 		end
-		if Trinket.BottledFlayedwingToxin.can_use and Trinket.BottledFlayedwingToxin.buff:Remains() < 300 and Trinket.BottledFlayedwingToxin:Usable() then
+		if Trinket.BottledFlayedwingToxin:Usable() and Trinket.BottledFlayedwingToxin.buff:Remains() < 300 then
 			UseCooldown(Trinket.BottledFlayedwingToxin)
 		end
-		if Trinket.SoleahsSecretTechnique.can_use and Trinket.SoleahsSecretTechnique.buff:Remains() < 300 and Trinket.SoleahsSecretTechnique:Usable() and Player.group_size > 1 then
+		if Trinket.SoleahsSecretTechnique:Usable() and Trinket.SoleahsSecretTechnique.buff:Remains() < 300 and Player.group_size > 1 then
 			UseCooldown(Trinket.SoleahsSecretTechnique)
 		end
 		if SummonSteward:Usable() and PhialOfSerenity:Charges() < 1 then
@@ -2426,7 +2437,7 @@ actions.precombat+=/shadow_blades,if=runeforge.mark_of_the_master_assassin
 				UseCooldown(EternalAugmentRune)
 			end
 			if EternalFlask:Usable() and EternalFlask.buff:Remains() < 300 and SpectralFlaskOfPower.buff:Remains() < 300 then
-				UseCooldown(SpectralFlaskOfPower)
+				UseCooldown(EternalFlask)
 			end
 			if Opt.pot and SpectralFlaskOfPower:Usable() and SpectralFlaskOfPower.buff:Remains() < 300 and EternalFlask.buff:Remains() < 300 then
 				UseCooldown(SpectralFlaskOfPower)
@@ -2443,6 +2454,13 @@ actions.precombat+=/shadow_blades,if=runeforge.mark_of_the_master_assassin
 		end
 		if ShadowBlades:Usable() and MarkOfTheMasterAssassin.known then
 			UseCooldown(ShadowBlades)
+		end
+	else
+		if Trinket.BottledFlayedwingToxin:Usable() and Trinket.BottledFlayedwingToxin.buff:Remains() < 10 then
+			UseExtra(Trinket.BottledFlayedwingToxin)
+		end
+		if Trinket.SoleahsSecretTechnique:Usable() and Trinket.SoleahsSecretTechnique.buff:Remains() < 10 and Player.group_size > 1 then
+			UseExtra(Trinket.SoleahsSecretTechnique)
 		end
 	end
 --[[
@@ -3117,7 +3135,7 @@ function UI:UpdateCombat()
 	Player.main = APL[Player.spec]:Main()
 	if Player.main then
 		assassinPanel.icon:SetTexture(Player.main.icon)
-		Player.main_freecast = Player.main.energy_cost > 0 and Player.main:EnergyCost() == 0
+		Player.main_freecast = (Player.main.energy_cost > 0 and Player.main:EnergyCost() == 0) or (Player.main.cp_cost > 0 and Player.main:CPCost() == 0)
 	end
 	if Player.cd then
 		assassinCooldownPanel.icon:SetTexture(Player.cd.icon)
@@ -3200,7 +3218,6 @@ CombatEvent.TRIGGER = function(timeStamp, event, _, srcGUID, _, _, _, dstGUID, _
 	then
 		e = 'UNIT_DIED'
 	elseif (
-	   e == 'RANGE_DAMAGE' or
 	   e == 'SPELL_CAST_START' or
 	   e == 'SPELL_CAST_SUCCESS' or
 	   e == 'SPELL_CAST_FAILED' or
@@ -3261,7 +3278,7 @@ CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellS
 
 	local ability = spellId and abilities.bySpellId[spellId]
 	if not ability then
-		print(format('EVENT %s TRACK CHECK FOR UNKNOWN %s ID %d', event, type(spellName) == 'string' and spellName or 'Unknown', spellId or 0))
+		--print(format('EVENT %s TRACK CHECK FOR UNKNOWN %s ID %d', event, type(spellName) == 'string' and spellName or 'Unknown', spellId or 0))
 		return
 	end
 
@@ -3299,7 +3316,7 @@ CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellS
 			ability:RecordTargetHit(dstGUID)
 		end
 	end
-	if event == 'RANGE_DAMAGE' or event == 'SPELL_DAMAGE' or event == 'SPELL_ABSORBED' or event == 'SPELL_MISSED' or event == 'SPELL_AURA_APPLIED' or event == 'SPELL_AURA_REFRESH' then
+	if event == 'SPELL_DAMAGE' or event == 'SPELL_ABSORBED' or event == 'SPELL_MISSED' or event == 'SPELL_AURA_APPLIED' or event == 'SPELL_AURA_REFRESH' then
 		ability:CastLanded(dstGUID, event, missType)
 	end
 end
