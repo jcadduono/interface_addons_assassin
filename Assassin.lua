@@ -1355,12 +1355,8 @@ function Player:HealthPct()
 	return self.health.current / self.health.max * 100
 end
 
-function Player:EnergyDeficit(energy)
-	return (energy or self.energy.max) - self.energy.current
-end
-
 function Player:EnergyTimeToMax(energy)
-	local deficit = self:EnergyDeficit(energy)
+	local deficit = (energy or self.energy.max) - self.energy.current
 	if deficit <= 0 then
 		return 0
 	end
@@ -1617,6 +1613,7 @@ function Player:Update()
 	self.energy.max = UnitPowerMax('player', 3)
 	self.energy.current = UnitPower('player', 3) + (self.energy.regen * self.execute_remains)
 	self.energy.current = min(max(self.energy.current, 0), self.energy.max)
+	self.energy.deficit = self.energy.max - self.energy.current
 	for i = 2, 5 do
 		self.combo_points.anima_charged[i] = EchoingReprimand.known and EchoingReprimand[i]:Up()
 	end
@@ -1988,7 +1985,7 @@ APL[SPEC.ASSASSINATION].Main = function(self)
 		end
 	end
 	Player.energy_regen_combined = Player.energy.regen + (Garrote:TickingPoisoned() + Rupture:TickingPoisoned()) * (VenomRush.known and 10 or 7) / 2
-	Player.energy_time_to_max_combined = Player:EnergyDeficit() / Player.energy_regen_combined
+	Player.energy_time_to_max_combined = Player.energy.deficit / Player.energy_regen_combined
 	local apl
 	if Player:TimeInCombat() > 0 then
 		apl = self:cds()
@@ -2006,7 +2003,7 @@ APL[SPEC.ASSASSINATION].Main = function(self)
 		apl = self:finish()
 		if apl then return apl end
 	end
-	if Player.combo_points.deficit > (Anticipation.known and 2 or 1) or Player:EnergyDeficit() <= 25 + Player.energy_regen_combined then
+	if Player.combo_points.deficit > (Anticipation.known and 2 or 1) or Player.energy.deficit <= 25 + Player.energy_regen_combined then
 		apl = self:build()
 		if apl then return apl end
 	end
@@ -2053,7 +2050,7 @@ APL[SPEC.ASSASSINATION].cds = function(self)
 	if Opt.pot and PotionOfSpectralAgility:Usable() and (Player:BloodlustActive() or Target.timeToDie <= 60 or Vendetta:Up() and Vanish:Ready(5)) then
 		return UseCooldown(PotionOfSpectralAgility)
 	end
-	if ArcaneTorrent:Usable() and Envenom:Down() and Player:EnergyDeficit() >= 15 + Player.energy_regen_combined * Player.gcd_remains * 1.1 then
+	if ArcaneTorrent:Usable() and Envenom:Down() and Player.energy.deficit >= 15 + Player.energy_regen_combined * Player.gcd_remains * 1.1 then
 		return UseCooldown(ArcaneTorrent)
 	end
 	if MarkedForDeath:Usable() and Target.timeToDie < Player.combo_points.deficit * 1.5 then
@@ -2265,66 +2262,84 @@ APL[SPEC.OUTLAW].cds = function(self)
 # Blade Flurry on 2+ enemies
 actions.cds=blade_flurry,if=spell_targets>=2&!buff.blade_flurry.up
 # Using Ambush is a 2% increase, so Vanish can be sometimes be used as a utility spell unless using Master Assassin or Deathly Shadows
-actions.cds+=/vanish,if=!runeforge.mark_of_the_master_assassin&!stealthed.all&variable.ambush_condition&(!runeforge.deathly_shadows|buff.deathly_shadows.down&combo_points<=2)
-actions.cds+=/vanish,if=runeforge.mark_of_the_master_assassin&master_assassin_remains=0&variable.blade_flurry_sync&(!cooldown.between_the_eyes.ready&variable.finish_condition|cooldown.between_the_eyes.ready&variable.ambush_condition)&(!conduit.count_the_odds|buff.roll_the_bones.remains>=10)
-actions.cds+=/adrenaline_rush,if=!buff.adrenaline_rush.up&(!cooldown.killing_spree.up|!talent.killing_spree.enabled)
-actions.cds+=/flagellation,if=!stealthed.all&(variable.finish_condition|target.time_to_die<13)
-actions.cds+=/roll_the_bones,if=master_assassin_remains=0&(variable.rtb_reroll|(buff.broadside.down|(variable.finish_condition&buff.ruthless_precision.down&buff.true_bearing.down))&buff.roll_the_bones.remains<=(4-rtb_buffs))
+actions.cds+=/vanish,if=!runeforge.mark_of_the_master_assassin&!runeforge.invigorating_shadowdust&!stealthed.all&variable.ambush_condition&(!runeforge.deathly_shadows|buff.deathly_shadows.down&combo_points<=2)
+# With Master Asssassin, sync Vanish with a finisher or Ambush depending on BtE cooldown, or always a finisher with MfD
+actions.cds+=/variable,name=vanish_ma_condition,if=runeforge.mark_of_the_master_assassin&!talent.marked_for_death.enabled,value=(!cooldown.between_the_eyes.ready&variable.finish_condition)|(cooldown.between_the_eyes.ready&variable.ambush_condition)
+actions.cds+=/variable,name=vanish_ma_condition,if=runeforge.mark_of_the_master_assassin&talent.marked_for_death.enabled,value=variable.finish_condition
+actions.cds+=/vanish,if=variable.vanish_ma_condition&master_assassin_remains=0&variable.blade_flurry_sync
+actions.cds+=/adrenaline_rush,if=!buff.adrenaline_rush.up
+# Fleshcraft for Pustule Eruption if not stealthed and not with Blade Flurry
+actions.cds+=/fleshcraft,if=(soulbind.pustule_eruption|soulbind.volatile_solvent)&!stealthed.all&(!buff.blade_flurry.up|spell_targets.blade_flurry<2)&(!buff.adrenaline_rush.up|energy.time_to_max>2)
+actions.cds+=/flagellation,target_if=max:target.time_to_die,if=!stealthed.all&(variable.finish_condition|target.time_to_die<13)
+actions.cds+=/dreadblades,if=!stealthed.all&combo_points<=2&(!covenant.venthyr|debuff.flagellation.up)&(!talent.marked_for_death|!cooldown.marked_for_death.ready)
+actions.cds+=/roll_the_bones,if=master_assassin_remains=0&(variable.rtb_reroll|buff.roll_the_bones.remains<(4-rtb_buffs)&(buff.broadside.down|(variable.finish_condition&buff.ruthless_precision.down&buff.true_bearing.down)))
 # If adds are up, snipe the one with lowest TTD. Use when dying faster than CP deficit or without any CP.
-actions.cds+=/marked_for_death,target_if=min:target.time_to_die,if=raid_event.adds.up&(target.time_to_die<combo_points.deficit|!stealthed.rogue&combo_points.deficit>=cp_max_spend-1)
+actions.cds+=/marked_for_death,line_cd=1.5,target_if=min:target.time_to_die,if=raid_event.adds.up&(target.time_to_die<combo_points.deficit|!stealthed.rogue&combo_points.deficit>=cp_max_spend-1)
 # If no adds will die within the next 30s, use MfD on boss without any CP.
-actions.cds+=/marked_for_death,if=raid_event.adds.in>30-raid_event.adds.duration&!stealthed.rogue&combo_points.deficit>=cp_max_spend-1
-actions.cds+=/killing_spree,if=variable.blade_flurry_sync&(energy.time_to_max>2|spell_targets>2)
-actions.cds+=/blade_rush,if=variable.blade_flurry_sync&(energy.time_to_max>2|spell_targets>2)
-actions.cds+=/dreadblades,if=!stealthed.all&combo_points<=1
+actions.cds+=/marked_for_death,if=raid_event.adds.in>30-raid_event.adds.duration&!stealthed.rogue&combo_points.deficit>=cp_max_spend-1&(!covenant.venthyr|cooldown.flagellation.remains>10|debuff.flagellation.up)
+# Attempt to sync Killing Spree with Vanish for Master Assassin
+actions.cds+=/variable,name=killing_spree_vanish_sync,value=!runeforge.mark_of_the_master_assassin|cooldown.vanish.remains>10|master_assassin_remains>2
+# Use in 1-2T if BtE is up and won't cap Energy, or at 3T+ (2T+ with Deathly Shadows) or when Master Assassin is up.
+actions.cds+=/killing_spree,if=variable.blade_flurry_sync&variable.killing_spree_vanish_sync&!stealthed.rogue&(debuff.between_the_eyes.up&buff.dreadblades.down&energy.deficit>(energy.regen*2+15)|spell_targets.blade_flurry>(2-buff.deathly_shadows.up)|master_assassin_remains>0)
+actions.cds+=/blade_rush,if=variable.blade_flurry_sync&(energy.time_to_max>2&!buff.dreadblades.up&!debuff.flagellation.up|energy<=30|spell_targets>2)
+# If using Invigorating Shadowdust, use normal logic in addition to checking major CDs.
+actions.cds+=/vanish,if=runeforge.invigorating_shadowdust&covenant.venthyr&!stealthed.all&variable.ambush_condition&(!cooldown.flagellation.ready&(!talent.dreadblades|!cooldown.dreadblades.ready|!debuff.flagellation.up))
+actions.cds+=/vanish,if=runeforge.invigorating_shadowdust&!covenant.venthyr&!stealthed.all&(cooldown.echoing_reprimand.remains>6|!cooldown.sepsis.ready|cooldown.serrated_bone_spike.full_recharge_time>20)
 actions.cds+=/shadowmeld,if=!stealthed.all&variable.ambush_condition
 actions.cds+=/potion,if=buff.bloodlust.react|fight_remains<30|buff.adrenaline_rush.up
 actions.cds+=/blood_fury
 actions.cds+=/berserking
 actions.cds+=/fireblood
 actions.cds+=/ancestral_call
+actions.cds+=/use_item,name=windscar_whetstone,if=spell_targets.blade_flurry>desired_targets|raid_event.adds.in>60|fight_remains<7
+actions.cds+=/use_item,name=cache_of_acquired_treasures,if=buff.acquired_axe.up|fight_remains<25
+actions.cds+=/use_item,name=scars_of_fraternal_strife,if=!buff.scars_of_fraternal_strife_4.up|fight_remains<30
 # Default conditions for usable items.
-actions.cds+=/use_items,slots=trinket1,if=!runeforge.mark_of_the_master_assassin&debuff.between_the_eyes.up&(!talent.ghostly_strike.enabled|debuff.ghostly_strike.up)|master_assassin_remains>0|trinket.1.has_stat.any_dps|fight_remains<=20
-actions.cds+=/use_items,slots=trinket2,if=!runeforge.mark_of_the_master_assassin&debuff.between_the_eyes.up&(!talent.ghostly_strike.enabled|debuff.ghostly_strike.up)|master_assassin_remains>0|trinket.2.has_stat.any_dps|fight_remains<=20
+actions.cds+=/use_items,slots=trinket1,if=debuff.between_the_eyes.up|trinket.1.has_stat.any_dps|fight_remains<=20
+actions.cds+=/use_items,slots=trinket2,if=debuff.between_the_eyes.up|trinket.2.has_stat.any_dps|fight_remains<=20
 ]]
 	if BladeFlurry:Usable() and Player.enemies >= 2 and BladeFlurry:Down() then
 		return UseCooldown(BladeFlurry)
 	end
-	if self.use_cds and Vanish:Usable() then
-		if not MarkOfTheMasterAssassin.known and self.ambush_condition and (not DeathlyShadows.known or (Player.combo_points.effective <= 2 and DeathlyShadows:Down())) then
-			UseExtra(Vanish)
-		end
-		if MarkOfTheMasterAssassin.known and MarkOfTheMasterAssassin:Up() and self.blade_flurry_sync and ((not BetweenTheEyes:Ready() and self.finish_condition) or (BetweenTheEyes:Ready() and self.ambush_condition)) and (not CountTheOdds.known or self.rtb_remains >= 10) then
-			UseExtra(Vanish)
-		end
+	if self.use_cds and Vanish:Usable() and (
+		(not MarkOfTheMasterAssassin.known and not InvigoratingShadowdust.known and not Player.stealthed and self.ambush_condition and (not DeathlyShadows.known or (Player.combo_points.effective <= 2 and DeathlyShadows:Down()))) or
+		(MarkOfTheMasterAssassin.known and MarkOfTheMasterAssassin:Down() and self.blade_flurry_sync and (
+			(MarkedForDeath.known and ((not BetweenTheEyes:Ready() and self.finish_condition) or (BetweenTheEyes:Ready() and self.ambush_condition))) or
+			(not MarkedForDeath.known and self.finish_condition)
+		))
+	) then
+		UseExtra(Vanish)
 	end
-	if self.use_cds and AdrenalineRush:Usable() and AdrenalineRush:Down() and (not KillingSpree.known or not KillingSpree:Ready()) then
+	if self.use_cds and AdrenalineRush:Usable() and AdrenalineRush:Down() then
 		return UseCooldown(AdrenalineRush)
 	end
-	if Flagellation:Usable() and not Player.stealthed and (self.finish_condition or Target.timeToDie < 13) then
+	if self.use_cds and Flagellation:Usable() and not Player.stealthed and (self.finish_condition or Target.timeToDie < 13) then
 		return UseCooldown(Flagellation)
 	end
-	if RollTheBones:Usable() and (self.rtb_reroll or ((Broadside:Down() or (Player.use_finisher and RuthlessPrecision:Down() and TrueBearing:Down())) and self.rtb_remains < (4 - self.rtb_buffs))) then
+	if self.use_cds and Dreadblades:Usable() and not Player.stealthed and Player.combo_points.effective <= 2 and (not Flagellation.known or Flagellation.debuff:Up()) and (not MarkedForDeath.known or not MarkedForDeath:Ready()) then
+		return UseCooldown(Dreadblades)
+	end
+	if RollTheBones:Usable() and (not MarkOfTheMasterAssassin.known or MarkOfTheMasterAssassin:Down()) and (not Dreadblades.known or Dreadblades:Down()) and (self.rtb_reroll or (self.rtb_remains < (4 - self.rtb_buffs) and (Broadside:Down() or (self.finish_condition and RuthlessPrecision:Down() and TrueBearing:Down())))) then
 		return UseCooldown(RollTheBones)
 	end
-	if MarkedForDeath:Usable() and not Player.stealthed and Player.combo_points.deficit >= (Player.combo_points.max_spend - 1) then
+	if MarkedForDeath:Usable() and (Target.timeToDie < Player.combo_points.deficit or (not Player.stealthed and Player.combo_points.deficit >= (Player.combo_points.max_spend - 1) and (not Flagellation.known or not Flagellation:Ready(10) or Flagellation.debuff:Up()))) then
 		return UseCooldown(MarkedForDeath)
 	end
-	if self.blade_flurry_sync and (Player.enemies > 2 or Player:EnergyTimeToMax() > 2) then
-		if self.use_cds and KillingSpree:Usable() then
-			return UseCooldown(KillingSpree)
-		end
-		if BladeRush:Usable() then
-			return UseCooldown(BladeRush)
-		end
+	self.killing_spree_vanish_sync = not MarkOfTheMasterAssassin.known or not Vanish:Ready(10) or MarkOfTheMasterAssassin:Remains() > 2
+	if self.use_cds and KillingSpree:Usable() and self.blade_flurry_sync and self.killing_spree_vanish_sync and not Player.stealthed and ((BetweenTheEyes:Up() and (not Dreadblades.known or Dreadblades:Down()) and Player.energy.deficit > (Player.energy.regen * 2 + 15)) or Player.enemies > (2 - (DeathlyShadows.known and DeathlyShadows:Up() and 1 or 0)) or (MarkOfTheMasterAssassin.known and MarkOfTheMasterAssassin:Up())) then
+		return UseCooldown(KillingSpree)
 	end
-	if self.use_cds and not Player.stealthed then
-		if Dreadblades:Usable() and Player.combo_points.current <= 1 then
-			return UseCooldown(Dreadblades)
-		end
-		if Shadowmeld:Usable() and self.ambush_condition then
-			UseExtra(Shadowmeld)
-		end
+	if self.use_cds and BladeRush:Usable() and self.blade_flurry_sync and ((Player:EnergyTimeToMax() > 2 and (not Dreadblades.known or Dreadblades:Down()) and (not Flagellation.known or Flagellation.debuff:Down())) or Player.energy.current <= 30 or Player.enemies > 2) then
+		return UseCooldown(BladeRush)
+	end
+	if self.use_cds and Vanish:Usable() and not Player.stealthed and InvigoratingShadowdust.known and (
+		(Flagellation.known and self.ambush_condition and not Flagellation:Ready() and (not Dreadblades.known or not Dreadblades:Ready() or Flagellation.debuff:Up())) or
+		(not Flagellation.known and ((EchoingReprimand.known and not EchoingReprimand:Ready(6)) or (Sepsis.known and not Sepsis:Ready()) or (SerratedBoneSpike.known and SerratedBoneSpike:FullRechargeTime() > 20)))
+	) then
+		UseExtra(Vanish)
+	end
+	if Shadowmeld:Usable() and not Player.stealthed and self.ambush_condition then
+		UseExtra(Shadowmeld)
 	end
 	if Opt.pot and Target.boss and not Player:InArenaOrBattleground() and PotionOfSpectralAgility:Usable() and (Player:BloodlustActive() or Target.timeToDie < 30 or AdrenalineRush:Remains() > 8) then
 		return UseCooldown(PotionOfSpectralAgility)
@@ -2389,10 +2404,14 @@ actions.build+=/sinister_strike
 	if SerratedBoneSpike:Usable() and (Target.timeToDie < 5 or SerratedBoneSpike:ChargesFractional() >= 2.75 or (SliceAndDice:Up() and SerratedBoneSpike:Down())) then
 		return SerratedBoneSpike
 	end
-	if PistolShot:Usable() and Opportunity:Up() and ((GreenskinsWickers.known and GreenskinsWickers:Up()) or (ConcealedBlunderbuss.known and ConcealedBlunderbuss:Up()) or (TornadoTrigger.known and TornadoTrigger:Up())) then
-		return PistolShot
-	end
-	if PistolShot:Usable() and Opportunity:Up() and (QuickDraw.known or Player:EnergyDeficit() > (Player.energy.regen * 1.5) or (not Weaponmaster.known and Player.combo_points.deficit <= (1 + (Broadside:Up() and 1 or 0)))) then
+	if PistolShot:Usable() and Opportunity:Up() and (
+		QuickDraw.known or
+		(GreenskinsWickers.known and GreenskinsWickers:Up()) or
+		(ConcealedBlunderbuss.known and ConcealedBlunderbuss:Up()) or
+		(TornadoTrigger.known and TornadoTrigger:Up()) or
+		Player.energy.deficit > (Player.energy.regen * 1.5) or
+		(not Weaponmaster.known and Player.combo_points.deficit <= (1 + (Broadside:Up() and 1 or 0)))
+	) then
 		return PistolShot
 	end
 	if SinisterStrike:Usable(0, true) then
@@ -2519,7 +2538,7 @@ actions+=/bag_of_tricks
 		return self:stealthed()
 	end
 	self.stealth_threshold = 25 + (Vigor.known and 20 or 0) + (MasterOfShadows.known and 20 or 0) + (ShadowFocus.known and 25 or 0) + (Alacrity.known and 20 or 0) + (Player.enemies >= 4 and 25 or 0)
-	if Player:EnergyDeficit() <= self.stealth_threshold then
+	if Player.energy.deficit <= self.stealth_threshold then
 		self:stealth_cds()
 	end
 	local apl
@@ -2531,11 +2550,11 @@ actions+=/bag_of_tricks
 		apl = self:finish()
 		if apl then return apl end
 	end
-	if Player:EnergyDeficit() <= self.stealth_threshold then
+	if Player.energy.deficit <= self.stealth_threshold then
 		apl = self:build()
 		if apl then return apl end
 	end
-	if ArcaneTorrent:Usable() and Player:EnergyDeficit() >= (15 + Player.energy.regen) then
+	if ArcaneTorrent:Usable() and Player.energy.deficit >= (15 + Player.energy.regen) then
 		UseCooldown(ArcaneTorrent)
 	end
 end
@@ -2668,7 +2687,7 @@ actions.stealth_cds+=/shadow_dance,if=variable.shd_combo_points&fight_remains<co
 	if Vanish:Usable() and not MarkOfTheMasterAssassin.known and (not self.shd_threshold or not Nightstalker.known and DarkShadow.known) and Player.combo_points.deficit > 1 and (not PerforatedVeins.known or PerforatedVeins:Stack() < 6) then
 		return UseCooldown(Vanish)
 	end
-	if Shadowmeld:Usable() and not self.shd_threshold and Player:EnergyDeficit() >= 10 and Player.combo_points.deficit > 1 and (not PerforatedVeins.known or PerforatedVeins:Stack() < 6) then
+	if Shadowmeld:Usable() and not self.shd_threshold and Player.energy.deficit >= 10 and Player.combo_points.deficit > 1 and (not PerforatedVeins.known or PerforatedVeins:Stack() < 6) then
 		Player.pool_energy = 80
 		return UseCooldown(Shadowmeld)
 	end
