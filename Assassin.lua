@@ -167,6 +167,8 @@ local Player = {
 		current = 0,
 		max = 5,
 		max_spend = 5,
+		deficit = 0,
+		effective = 0,
 		anima_charged = {},
 	},
 	threat = {
@@ -1109,6 +1111,8 @@ RollTheBones.buffs = {
 	[SkullAndCrossbones] = true,
 	[TrueBearing] = true,
 }
+------ Tier Bonuses
+local TornadoTrigger = Ability:Add(363592, true, true, 364556) -- T28 4 piece
 ---- Subtlety
 local Backstab = Ability:Add(53, false, true)
 Backstab.energy_cost = 35
@@ -1182,6 +1186,10 @@ EchoingReprimand.finishers = {
 	[Rupture] = true,
 	[SecretTechnique] = true,
 }
+local EffusiveAnimaAccelerator = Ability:Add(352188, false, true, 353248) -- Kyrian (Forgelite Prime Mikanikos Soulbind)
+EffusiveAnimaAccelerator.buff_duration = 8
+EffusiveAnimaAccelerator.tick_inteval = 2
+EffusiveAnimaAccelerator:AutoAoe(false, 'apply')
 local Flagellation = Ability:Add(323654, true, true) -- Venthyr
 Flagellation.buff_duration = 12
 Flagellation.cooldown_duration = 90
@@ -1213,9 +1221,9 @@ PerforatedVeins.conduit_id = 248
 -- Legendary effects
 local AkaarisSoulFragment = Ability:Add(340090, false, true)
 AkaarisSoulFragment.bonus_id = 7124
-local ConcealedBlunderbus = Ability:Add(340088, false, true, 340587)
-ConcealedBlunderbus.buff_duration = 10
-ConcealedBlunderbus.bonus_id = 7122
+local ConcealedBlunderbuss = Ability:Add(340088, false, true, 340587)
+ConcealedBlunderbuss.buff_duration = 10
+ConcealedBlunderbuss.bonus_id = 7122
 local DeathlyShadows = Ability:Add(340092, true, true, 341202)
 DeathlyShadows.buff_duration = 12
 DeathlyShadows.bonus_id = 7126
@@ -1224,6 +1232,8 @@ Finality.bonus_id = 7123
 local GreenskinsWickers = Ability:Add(340085, true, true, 340573)
 GreenskinsWickers.buff_duration = 15
 GreenskinsWickers.bonus_id = 7119
+local InvigoratingShadowdust = Ability:Add(340080, true, true)
+InvigoratingShadowdust.bonus_id = 7114
 local MarkOfTheMasterAssassin = Ability:Add(340076, true, true, 340094)
 MarkOfTheMasterAssassin.buff_duration = 4
 MarkOfTheMasterAssassin.bonus_id = 7111
@@ -1345,14 +1355,6 @@ function Player:HealthPct()
 	return self.health.current / self.health.max * 100
 end
 
-function Player:Energy()
-	return self.energy.current
-end
-
-function Player:EnergyRegen()
-	return self.energy.regen
-end
-
 function Player:EnergyDeficit(energy)
 	return (energy or self.energy.max) - self.energy.current
 end
@@ -1362,7 +1364,7 @@ function Player:EnergyTimeToMax(energy)
 	if deficit <= 0 then
 		return 0
 	end
-	return deficit / self:EnergyRegen()
+	return deficit / self.energy.regen
 end
 
 function Player:ComboPoints()
@@ -1370,10 +1372,6 @@ function Player:ComboPoints()
 		return 7
 	end
 	return self.combo_points.current
-end
-
-function Player:ComboPointsDeficit()
-	return self.combo_points.max - self.combo_points.current
 end
 
 function Player:HasteFactor()
@@ -1559,6 +1557,7 @@ function Player:UpdateAbilities()
 		KevinsWrath.known = true
 	end
 	ShadowTechniques.auto_count = 0
+	TornadoTrigger.known = PistolShot.known and Player.set_bonus.t28 >= 4
 
 	wipe(abilities.bySpellId)
 	wipe(abilities.velocity)
@@ -1624,6 +1623,7 @@ function Player:Update()
 	for i = 2, 5 do
 		self.combo_points.anima_charged[i] = EchoingReprimand.known and EchoingReprimand[i]:Up()
 	end
+	self.combo_points.effective = self:ComboPoints()
 	speed_mh, speed_oh = UnitAttackSpeed('player')
 	self.swing.mh.speed = speed_mh or 0
 	self.swing.oh.speed = speed_oh or 0
@@ -2002,7 +2002,7 @@ APL[SPEC.ASSASSINATION].Main = function(self)
 		apl = self:finish()
 		if apl then return apl end
 	end
-	if Player:ComboPointsDeficit() > (Anticipation.known and 2 or 1) or Player:EnergyDeficit() <= 25 + Player.energy_regen_combined then
+	if Player.combo_points.deficit > (Anticipation.known and 2 or 1) or Player:EnergyDeficit() <= 25 + Player.energy_regen_combined then
 		apl = self:build()
 		if apl then return apl end
 	end
@@ -2016,16 +2016,16 @@ actions.aoe+=/garrote,cycle_targets=1,if=talent.subterfuge.enabled&stealthed.rog
 actions.aoe+=/envenom,if=combo_points>=cp_max_spend
 actions.aoe+=/fan_of_knives
 ]]
-	if Envenom:Usable() and Envenom:Down() and Player:ComboPoints() >= Player.combo_points.max_spend then
+	if Envenom:Usable() and Envenom:Down() and Player.combo_points.effective >= Player.combo_points.max_spend then
 		return Envenom
 	end
-	if Rupture:Usable() and Player:ComboPoints() >= Player.combo_points.max_spend and Rupture:Refreshable() and Target.timeToDie - Rupture:Remains() > 4 then
+	if Rupture:Usable() and Player.combo_points.effective >= Player.combo_points.max_spend and Rupture:Refreshable() and Target.timeToDie - Rupture:Remains() > 4 then
 		return Rupture
 	end
 	if Subterfuge.known and Garrote:Usable() and Player.stealthed and Garrote:Refreshable() then
 		return Garrote
 	end
-	if Envenom:Usable() and Player:ComboPoints() >= Player.combo_points.max_spend then
+	if Envenom:Usable() and Player.combo_points.effective >= Player.combo_points.max_spend then
 		return Envenom
 	end
 	return FanOfKnives
@@ -2052,7 +2052,7 @@ APL[SPEC.ASSASSINATION].cds = function(self)
 	if ArcaneTorrent:Usable() and Envenom:Down() and Player:EnergyDeficit() >= 15 + Player.energy_regen_combined * Player.gcd_remains * 1.1 then
 		return UseCooldown(ArcaneTorrent)
 	end
-	if MarkedForDeath:Usable() and Target.timeToDie < Player:ComboPointsDeficit() * 1.5 then
+	if MarkedForDeath:Usable() and Target.timeToDie < Player.combo_points.deficit * 1.5 then
 		return UseCooldown(MarkedForDeath)
 	end
 	if Vendetta:Usable() and (not Exsanguinate.known or Rupture:Up()) then
@@ -2063,7 +2063,7 @@ APL[SPEC.ASSASSINATION].cds = function(self)
 			return UseCooldown(Vanish)
 		end
 		if Nightstalker.known then
-			if Player:ComboPoints() >= Player.combo_points.max_spend then
+			if Player.combo_points.effective >= Player.combo_points.max_spend then
 				if not Exsanguinate.known and Vendetta:Up() then
 					return UseCooldown(Vanish)
 				elseif Exsanguinate.known and Exsanguinate:Ready(1) then
@@ -2071,14 +2071,14 @@ APL[SPEC.ASSASSINATION].cds = function(self)
 				end
 			end
 		elseif Subterfuge.known then
-			if Garrote:Refreshable() and ((Player.enemies <= 3 and Player:ComboPointsDeficit() >= 1 + Player.enemies) or (Player.enemies >= 4 and Player:ComboPointsDeficit() >= 4)) then
+			if Garrote:Refreshable() and ((Player.enemies <= 3 and Player.combo_points.deficit >= 1 + Player.enemies) or (Player.enemies >= 4 and Player.combo_points.deficit >= 4)) then
 				return UseCooldown(Vanish)
 			end
-		elseif ShadowFocus.known and Player.energy_time_to_max_combined >= 2 and Player:ComboPointsDeficit() >= 4 then
+		elseif ShadowFocus.known and Player.energy_time_to_max_combined >= 2 and Player.combo_points.deficit >= 4 then
 			return UseCooldown(Vanish)
 		end
 	end
-	if ToxicBlade:Usable() and (Target.timeToDie <= 6 or Player:ComboPointsDeficit() >= 1 and Rupture:Remains() > 8 and Vendetta:Cooldown() > 10) then
+	if ToxicBlade:Usable() and (Target.timeToDie <= 6 or Player.combo_points.deficit >= 1 and Rupture:Remains() > 8 and Vendetta:Cooldown() > 10) then
 		return UseCooldown(ToxicBlade)
 	end
 end
@@ -2120,18 +2120,18 @@ actions.stealthed+=/mutilate
 	if ShadowFocus.known and Mutilate:Usable() and Garrote:Ticking() > 0 then
 		return Mutilate
 	end
-	if Subterfuge.known and Garrote:Usable() and Player:ComboPointsDeficit() >= 1 and Garrote:Refreshable() and Garrote:Remains() <= Garrote:TickTime() * 2 and Target.timeToDie - Garrote:Remains() > 2 then
+	if Subterfuge.known and Garrote:Usable() and Player.combo_points.deficit >= 1 and Garrote:Refreshable() and Garrote:Remains() <= Garrote:TickTime() * 2 and Target.timeToDie - Garrote:Remains() > 2 then
 		return Garrote
 	end
 	if Rupture:Usable() then
-		if Rupture:Refreshable() and Player:ComboPoints() >= 4 and Rupture:Remains() <= Rupture:TickTime() and Target.timeToDie - Rupture:Remains() > 6 then
+		if Rupture:Refreshable() and Player.combo_points.effective >= 4 and Rupture:Remains() <= Rupture:TickTime() and Target.timeToDie - Rupture:Remains() > 6 then
 			return Rupture
 		end
 		if Exsanguinate.known and Nightstalker.known and Target.timeToDie - Rupture:Remains() > 6 then
 			return Rupture
 		end
 	end
-	if Envenom:Usable() and Player:ComboPoints() >= Player.combo_points.max_spend then
+	if Envenom:Usable() and Player.combo_points.effective >= Player.combo_points.max_spend then
 		return Envenom
 	end
 	if not Subterfuge.known and Garrote:Usable() and Target.timeToDie - Garrote:Remains() > 4 then
@@ -2143,9 +2143,14 @@ actions.stealthed+=/mutilate
 end
 
 APL[SPEC.OUTLAW].Main = function(self)
-	Player.rtb_remains = RollTheBones:Remains(true)
-	Player.rtb_buffs = RollTheBones:Stack()
-	Player.rtb_reroll = Player.rtb_buffs < 2 and TrueBearing:Down() and Broadside:Down()
+	self.rtb_remains = RollTheBones:Remains(true)
+	self.rtb_buffs = RollTheBones:Stack()
+	self.rtb_reroll = (self.rtb_buffs < 2 and (Broadside:Down() and (not ConcealedBlunderbuss.known or SkullAndCrossbones:Down()) and (not InvigoratingShadowdust.known or TrueBearing:Down()))) or (self.rtb_buffs == 2 and BuriedTreasure:Up() and GrandMelee:Up())
+	self.use_cds = Opt.cooldown and (Target.boss or Target.player or (not Opt.boss_only and Target.timeToDie > Opt.cd_ttd) or AdrenalineRush:Up())
+	self.ambush_condition = Player.combo_points.deficit >= (2 + (Broadside:Up() and 1 or 0)) and Player.energy.current >= 50 and (not CountTheOdds.known or not RollTheBones:Ready(30) or ((Broadside:Down() or TrueBearing:Down() or RuthlessPrecision:Down()) and (Broadside:Remains() > 15 or TrueBearing:Remains() > 15 or RuthlessPrecision:Remains() > 15)))
+	self.finish_condition = Player.combo_points.current >= (Player.combo_points.max_spend - (Broadside:Up() and 1 or 0) - (((QuickDraw.known and Opportunity:Up()) or (ConcealedBlunderbuss.known and ConcealedBlunderbuss:Up())) and 1 or 0)) or Player.combo_points.effective >= Player.combo_points.max_spend
+	self.blade_flurry_sync = Player.enemies < 2 or BladeFlurry:Remains() > (1 + (KillingSpree.known and 1 or 0))
+
 	if Player:TimeInCombat() == 0 then
 --[[
 actions.precombat=apply_poison
@@ -2154,9 +2159,10 @@ actions.precombat+=/augmentation
 actions.precombat+=/food
 # Snapshot raid buffed stats before combat begins and pre-potting is done.
 actions.precombat+=/snapshot_stats
-actions.precombat+=/marked_for_death,precombat_seconds=5,if=raid_event.adds.in>25
-actions.precombat+=/roll_the_bones,precombat_seconds=1
-actions.precombat+=/slice_and_dice,precombat_seconds=2
+actions.precombat+=/marked_for_death,precombat_seconds=10,if=raid_event.adds.in>25
+actions.precombat+=/fleshcraft,if=soulbind.pustule_eruption|soulbind.volatile_solvent
+actions.precombat+=/roll_the_bones,precombat_seconds=2
+actions.precombat+=/slice_and_dice,precombat_seconds=1
 actions.precombat+=/stealth
 ]]
 		if Opt.poisons then
@@ -2193,7 +2199,7 @@ actions.precombat+=/stealth
 		if SliceAndDice:Usable() and SliceAndDice:Remains() < (4 * Player.combo_points.current) and Player.combo_points.current >= 2 and Target.timeToDie > SliceAndDice:Remains() then
 			return SliceAndDice
 		end
-		if RollTheBones:Usable() and (Player.rtb_reroll or (Broadside:Down() and Player.rtb_remains < 5)) then
+		if RollTheBones:Usable() and (self.rtb_reroll or (Broadside:Down() and self.rtb_remains < 5)) then
 			UseCooldown(RollTheBones)
 		end
 		if not Player.stealthed then
@@ -2201,14 +2207,16 @@ actions.precombat+=/stealth
 		end
 	end
 --[[
-# Reroll single buffs early other than True Bearing and Broadside
-actions+=/variable,name=rtb_reroll,value=rtb_buffs<2&!buff.true_bearing.up&!buff.broadside.up
+# Reroll BT + GM or single buffs early other than Broadside, TB with Shadowdust, or SnC with Blunderbuss
+actions+=/variable,name=rtb_reroll,value=rtb_buffs<2&(!buff.broadside.up&(!runeforge.concealed_blunderbuss|!buff.skull_and_crossbones.up)&(!runeforge.invigorating_shadowdust|!buff.true_bearing.up))|rtb_buffs=2&buff.buried_treasure.up&buff.grand_melee.up
 # Ensure we get full Ambush CP gains and aren't rerolling Count the Odds buffs away
-actions+=/variable,name=ambush_condition,value=combo_points.deficit>=2+buff.broadside.up&energy>=50&(!conduit.count_the_odds|cooldown.roll_the_bones.remains>30|(!buff.broadside.up|!buff.true_bearing.up|!buff.ruthless_precision.up)&(buff.broadside.remains>15|buff.true_bearing.remains>15|buff.ruthless_precision.remains>15))
-# Finish at maximum CP but avoid wasting Broadside and Quick Draw bonus combo points
-actions+=/variable,name=finish_condition,value=combo_points>=cp_max_spend-buff.broadside.up-(buff.opportunity.up*talent.quick_draw.enabled)|combo_points=animacharged_cp
+actions+=/variable,name=ambush_condition,value=combo_points.deficit>=2+buff.broadside.up&energy>=50&(!conduit.count_the_odds|buff.roll_the_bones.remains>=10)
+# Finish at max possible CP without overflowing bonus combo points, unless for BtE which always should be 5+ CP
+actions+=/variable,name=finish_condition,value=combo_points>=cp_max_spend-buff.broadside.up-(buff.opportunity.up*talent.quick_draw.enabled|buff.concealed_blunderbuss.up)|effective_combo_points>=cp_max_spend
+# Always attempt to use BtE at 5+ CP, regardless of CP gen waste
+actions+=/variable,name=finish_condition,op=reset,if=cooldown.between_the_eyes.ready&effective_combo_points<5
 # With multiple targets, this variable is checked to decide whether some CDs should be synced with Blade Flurry
-actions+=/variable,name=blade_flurry_sync,value=spell_targets.blade_flurry<2&raid_event.adds.in>20|buff.blade_flurry.up
+actions+=/variable,name=blade_flurry_sync,value=spell_targets.blade_flurry<2&raid_event.adds.in>20|buff.blade_flurry.remains>1+talent.killing_spree.enabled
 actions+=/run_action_list,name=stealth,if=stealthed.all
 actions+=/call_action_list,name=cds
 actions+=/run_action_list,name=finish,if=variable.finish_condition
@@ -2218,15 +2226,11 @@ actions+=/arcane_pulse
 actions+=/lights_judgment
 actions+=/bag_of_tricks
 ]]
-	Player.use_cds = Opt.cooldown and (Target.boss or Target.player or (not Opt.boss_only and Target.timeToDie > Opt.cd_ttd) or AdrenalineRush:Up())
-	Player.ambush_condition = Player:ComboPointsDeficit() >= (Broadside:Up() and 3 or 2) and Player:Energy() >= 50 and (not CountTheOdds.known or not RollTheBones:Ready(30) or ((Broadside:Down() or TrueBearing:Down() or RuthlessPrecision:Down()) and (Broadside:Remains() > 15 or TrueBearing:Remains() > 15 or RuthlessPrecision:Remains() > 15)))
-	Player.finish_condition = Player.combo_points.current >= (Player.combo_points.max_spend - (Broadside:Up() and 1 or 0) - (QuickDraw.known and Opportunity:Up() and 1 or 0))
-	Player.blade_flurry_sync = Player.enemies < 2 or BladeFlurry:Up()
 	if Player.stealthed then
 		return self:stealth()
 	end
 	self:cds()
-	if Player.finish_condition then
+	if self.finish_condition then
 		return self:finish()
 	end
 	return self:build()
@@ -2237,7 +2241,7 @@ APL[SPEC.OUTLAW].stealth = function(self)
 actions.stealth=dispatch,if=variable.finish_condition
 actions.stealth+=/ambush
 ]]
-	if Dispatch:Usable() and Player.finish_condition then
+	if Dispatch:Usable() and self.finish_condition then
 		return Dispatch
 	end
 	if Ambush:Usable() then
@@ -2275,39 +2279,39 @@ actions.cds+=/use_items,slots=trinket2,if=!runeforge.mark_of_the_master_assassin
 	if BladeFlurry:Usable() and Player.enemies >= 2 and BladeFlurry:Down() then
 		return UseCooldown(BladeFlurry)
 	end
-	if Player.use_cds and Vanish:Usable() then
-		if not MarkOfTheMasterAssassin.known and Player.ambush_condition and (not DeathlyShadows.known or (Player:ComboPoints() <= 2 and DeathlyShadows:Down())) then
+	if self.use_cds and Vanish:Usable() then
+		if not MarkOfTheMasterAssassin.known and self.ambush_condition and (not DeathlyShadows.known or (Player.combo_points.effective <= 2 and DeathlyShadows:Down())) then
 			UseExtra(Vanish)
 		end
-		if MarkOfTheMasterAssassin.known and MarkOfTheMasterAssassin:Up() and Player.blade_flurry_sync and ((not BetweenTheEyes:Ready() and Player.finish_condition) or (BetweenTheEyes:Ready() and Player.ambush_condition)) and (not CountTheOdds.known or Player.rtb_remains >= 10) then
+		if MarkOfTheMasterAssassin.known and MarkOfTheMasterAssassin:Up() and self.blade_flurry_sync and ((not BetweenTheEyes:Ready() and self.finish_condition) or (BetweenTheEyes:Ready() and self.ambush_condition)) and (not CountTheOdds.known or self.rtb_remains >= 10) then
 			UseExtra(Vanish)
 		end
 	end
-	if Player.use_cds and AdrenalineRush:Usable() and AdrenalineRush:Down() and (not KillingSpree.known or not KillingSpree:Ready()) then
+	if self.use_cds and AdrenalineRush:Usable() and AdrenalineRush:Down() and (not KillingSpree.known or not KillingSpree:Ready()) then
 		return UseCooldown(AdrenalineRush)
 	end
-	if Flagellation:Usable() and not Player.stealthed and (Player.finish_condition or Target.timeToDie < 13) then
+	if Flagellation:Usable() and not Player.stealthed and (self.finish_condition or Target.timeToDie < 13) then
 		return UseCooldown(Flagellation)
 	end
-	if RollTheBones:Usable() and (Player.rtb_reroll or ((Broadside:Down() or (Player.use_finisher and RuthlessPrecision:Down() and TrueBearing:Down())) and Player.rtb_remains < (4 - Player.rtb_buffs))) then
+	if RollTheBones:Usable() and (self.rtb_reroll or ((Broadside:Down() or (Player.use_finisher and RuthlessPrecision:Down() and TrueBearing:Down())) and self.rtb_remains < (4 - self.rtb_buffs))) then
 		return UseCooldown(RollTheBones)
 	end
-	if MarkedForDeath:Usable() and not Player.stealthed and Player:ComboPointsDeficit() >= (Player.combo_points.max_spend - 1) then
+	if MarkedForDeath:Usable() and not Player.stealthed and Player.combo_points.deficit >= (Player.combo_points.max_spend - 1) then
 		return UseCooldown(MarkedForDeath)
 	end
-	if Player.blade_flurry_sync and (Player.enemies > 2 or Player:EnergyTimeToMax() > 2) then
-		if Player.use_cds and KillingSpree:Usable() then
+	if self.blade_flurry_sync and (Player.enemies > 2 or Player:EnergyTimeToMax() > 2) then
+		if self.use_cds and KillingSpree:Usable() then
 			return UseCooldown(KillingSpree)
 		end
 		if BladeRush:Usable() then
 			return UseCooldown(BladeRush)
 		end
 	end
-	if Player.use_cds and not Player.stealthed then
+	if self.use_cds and not Player.stealthed then
 		if Dreadblades:Usable() and Player.combo_points.current <= 1 then
 			return UseCooldown(Dreadblades)
 		end
-		if Shadowmeld:Usable() and Player.ambush_condition then
+		if Shadowmeld:Usable() and self.ambush_condition then
 			UseExtra(Shadowmeld)
 		end
 	end
@@ -2325,61 +2329,61 @@ end
 
 APL[SPEC.OUTLAW].finish = function(self)
 --[[
-actions.finish=slice_and_dice,if=buff.slice_and_dice.remains<fight_remains&refreshable
-# BtE on cooldown to keep the Crit debuff up, unless the target is about to die
-actions.finish+=/between_the_eyes,if=target.time_to_die>3
+# BtE to keep the Crit debuff up, if RP is up, or for Greenskins, unless the target is about to die.
+actions.finish=between_the_eyes,if=target.time_to_die>3&(debuff.between_the_eyes.remains<4|runeforge.greenskins_wickers&!buff.greenskins_wickers.up|!runeforge.greenskins_wickers&buff.ruthless_precision.up)
+actions.finish+=/slice_and_dice,if=buff.slice_and_dice.remains<fight_remains&refreshable
 actions.finish+=/dispatch
 ]]
-	if SliceAndDice:Usable() and SliceAndDice:Refreshable() and (Player.enemies > 1 or SliceAndDice:Remains() < Target.timeToDie) and (not Player.combo_points.anima_charged[Player.combo_points.current] or SliceAndDice:Down()) then
-		return SliceAndDice
-	end
-	if BetweenTheEyes:Usable(Player:EnergyTimeToMax(50), true) and Target.timeToDie > 3 then
+	if BetweenTheEyes:Usable(Player:EnergyTimeToMax(50), true) and Target.timeToDie > 3 and (BetweenTheEyes:Remains() < 4 or (GreenskinsWickers.known and GreenskinsWickers:Down()) or (not GreenskinsWickers.known and RuthlessPrecision:Up())) then
 		return Pool(BetweenTheEyes)
 	end
-	if Dispatch:Usable() then
-		return Dispatch
+	if SliceAndDice:Usable(0, true) and SliceAndDice:Refreshable() and (Player.enemies > 1 or SliceAndDice:Remains() < Target.timeToDie) and (not Player.combo_points.anima_charged[Player.combo_points.current] or SliceAndDice:Down()) then
+		return Pool(SliceAndDice)
+	end
+	if Dispatch:Usable(0, true) then
+		return Pool(Dispatch)
 	end
 end
 
 APL[SPEC.OUTLAW].build = function(self)
 --[[
 actions.build=sepsis
-actions.build+=/ghostly_strike
+actions.build+=/ghostly_strike,if=debuff.ghostly_strike.remains<=3
 actions.build+=/shiv,if=runeforge.tiny_toxic_blade
-actions.build+=/echoing_reprimand
-actions.build+=/serrated_bone_spike,cycle_targets=1,if=buff.slice_and_dice.up&!dot.serrated_bone_spike_dot.ticking|fight_remains<=5|cooldown.serrated_bone_spike.charges_fractional>=2.75
+actions.build+=/echoing_reprimand,if=!soulbind.effusive_anima_accelerator|variable.blade_flurry_sync
+# Apply SBS to all targets without a debuff as priority, preferring targets dying sooner after the primary target
+actions.build+=/serrated_bone_spike,if=!dot.serrated_bone_spike_dot.ticking
+actions.build+=/serrated_bone_spike,target_if=min:target.time_to_die+(dot.serrated_bone_spike_dot.ticking*600),if=!dot.serrated_bone_spike_dot.ticking
+# Attempt to use when it will cap combo points and SnD is down, otherwise keep from capping charges
+actions.build+=/serrated_bone_spike,if=fight_remains<=5|cooldown.serrated_bone_spike.max_charges-charges_fractional<=0.25|combo_points.deficit=cp_gain&!buff.skull_and_crossbones.up&energy.time_to_max>1
+actions.build+=/pistol_shot,if=buff.opportunity.up&(buff.greenskins_wickers.up|buff.concealed_blunderbuss.up|buff.tornado_trigger.up)
 # Use Pistol Shot with Opportunity if Combat Potency won't overcap energy, when it will exactly cap CP, or when using Quick Draw
-actions.build+=/pistol_shot,if=buff.opportunity.up&(energy.deficit>(energy.regen+10)|combo_points.deficit<=1+buff.broadside.up|talent.quick_draw.enabled)
-actions.build+=/pistol_shot,if=buff.opportunity.up&(buff.greenskins_wickers.up|buff.concealed_blunderbuss.up)
+actions.build+=/pistol_shot,if=buff.opportunity.up&(energy.deficit>energy.regen*1.5|!talent.weaponmaster&combo_points.deficit<=1+buff.broadside.up|talent.quick_draw.enabled)
+# Use Sinister Strike on targets without the Cache DoT if the trinket is up
+actions.build+=/sinister_strike,target_if=min:dot.vicious_wound.remains,if=buff.acquired_axe_driver.up
 actions.build+=/sinister_strike
-actions.build+=/gouge,if=talent.dirty_tricks.enabled&combo_points.deficit>=1+buff.broadside.up
 ]]
 	if Sepsis:Usable() then
 		UseCooldown(Sepsis)
 	end
-	if GhostlyStrike:Usable() then
+	if GhostlyStrike:Usable() and GhostlyStrike:Remains() <= 3 then
 		return GhostlyStrike
 	end
 	if TinyToxicBlade.known and Shiv:Usable() then
 		return Shiv
 	end
-	if EchoingReprimand:Usable() and EchoingReprimand:Down() then
+	if EchoingReprimand:Usable() and (not EffusiveAnimaAccelerator.known or self.blade_flurry_sync) then
 		return EchoingReprimand
 	end
 	if SerratedBoneSpike:Usable() and (Target.timeToDie < 5 or SerratedBoneSpike:ChargesFractional() >= 2.75 or (SliceAndDice:Up() and SerratedBoneSpike:Down())) then
 		return SerratedBoneSpike
 	end
-	if PistolShot:Usable() and Opportunity:Up() and (QuickDraw.known or Player:EnergyDeficit() > (Player:EnergyRegen() + 10) or Player:ComboPointsDeficit() <= (Broadside:Up() and 2 or 1) or (GreenskinsWickers.known and GreenskinsWickers:Up()) or (ConcealedBlunderbus.known and ConcealedBlunderbus:Up())) then
+	if PistolShot:Usable() and Opportunity:Up() and ((GreenskinsWickers.known and GreenskinsWickers:Up()) or (ConcealedBlunderbuss.known and ConcealedBlunderbuss:Up()) or (TornadoTrigger.known and TornadoTrigger:Up())) then
 		return PistolShot
 	end
---[[
-	if SinisterStrike:Usable() then
-		return SinisterStrike
+	if PistolShot:Usable() and Opportunity:Up() and (QuickDraw.known or Player:EnergyDeficit() > (Player.energy.regen * 1.5) or (not Weaponmaster.known and Player.combo_points.deficit <= (1 + (Broadside:Up() and 1 or 0)))) then
+		return PistolShot
 	end
-	if DirtyTricks.known and Gouge:Usable() and Player:ComboPointsDeficit() >= (Broadside:Up() and 2 or 1) then
-		UseExtra(Gouge)
-	end
-]]
 	if SinisterStrike:Usable(0, true) then
 		return Pool(SinisterStrike)
 	end
@@ -2482,9 +2486,8 @@ actions+=/bag_of_tricks
 ]]
 	self.snd_condition = Player.enemies >= 6 or SliceAndDice:Up()
 	self.is_next_cp_animacharged = EchoingReprimand.known and Player.combo_points.anima_charged[Player.combo_points.current + 1]
-	self.effective_combo_points = Player:ComboPoints()
-	if EchoingReprimand.known and self.effective_combo_points > Player.combo_points.current and Player:ComboPointsDeficit() > 2 and ShadowTechniques:TimeTo(4) < 0.5 and not self.is_next_cp_animacharged then
-		self.effective_combo_points = Player.combo_points.current
+	if EchoingReprimand.known and Player.combo_points.effective > Player.combo_points.current and Player.combo_points.deficit > 2 and ShadowTechniques:TimeTo(4) < 0.5 and not self.is_next_cp_animacharged then
+		Player.combo_points.effective = Player.combo_points.current
 	end
 	self.use_priority_rotation = Opt.priority_rotation and Player.enemies >= 2
 	if Shadowmeld.known and Stealth:Usable() and Shadowmeld:Up() then
@@ -2503,9 +2506,9 @@ actions+=/bag_of_tricks
 	end
 	local apl
 	if (
-		self.effective_combo_points >= Player.combo_points.max_spend or Player:ComboPointsDeficit() <= 1 or
-		(self.effective_combo_points >= 3 and Player.enemies == 1 and Target.timeToDie < 1) or
-		(self.effective_combo_points >= 4 and (Player.enemies >= 4 or SymbolsOfDeath.autocrit:Up()))
+		Player.combo_points.effective >= Player.combo_points.max_spend or Player.combo_points.deficit <= 1 or
+		(Player.combo_points.effective >= 3 and Player.enemies == 1 and Target.timeToDie < 1) or
+		(Player.combo_points.effective >= 4 and (Player.enemies >= 4 or SymbolsOfDeath.autocrit:Up()))
 	) then
 		apl = self:finish()
 		if apl then return apl end
@@ -2514,7 +2517,7 @@ actions+=/bag_of_tricks
 		apl = self:build()
 		if apl then return apl end
 	end
-	if ArcaneTorrent:Usable() and Player:EnergyDeficit() >= (15 + Player:EnergyRegen()) then
+	if ArcaneTorrent:Usable() and Player:EnergyDeficit() >= (15 + Player.energy.regen) then
 		UseCooldown(ArcaneTorrent)
 	end
 end
@@ -2566,7 +2569,7 @@ actions.cds+=/use_items,if=buff.symbols_of_death.up|fight_remains<20
 	if Flagellation:Usable() and self.snd_condition and (SymbolsOfDeath:Up() or (Player.enemies <= 1 and not ShadowFocus.known and SymbolsOfDeath:Ready())) and Player.combo_points.current >= 5 and Target.timeToDie > 10 then
 		return UseCooldown(Flagellation)
 	end
-	if Vanish:Usable() and ((MarkOfTheMasterAssassin.known and Player:ComboPointsDeficit() <= (DeeperStratagem.known and 0 or 1)) or (DeathlyShadows.known and Player.combo_points.current < 1)) and SymbolsOfDeath:Up() and ShadowDance:Up() and MarkOfTheMasterAssassin:Down() and DeathlyShadows:Down() then
+	if Vanish:Usable() and ((MarkOfTheMasterAssassin.known and Player.combo_points.deficit <= (DeeperStratagem.known and 0 or 1)) or (DeathlyShadows.known and Player.combo_points.current < 1)) and SymbolsOfDeath:Up() and ShadowDance:Up() and MarkOfTheMasterAssassin:Down() and DeathlyShadows:Down() then
 		return UseCooldown(Vanish)
 	end
 	if ShurikenTornado:Usable(0, true) and Player.enemies <= 1 and self.snd_condition and not (Stealth:Up() or Vanish:Up() or Shadowmeld:Up()) and SymbolsOfDeath:Ready() and ShadowDance:Charges() >= 1 and (not Obedience.known or Flagellation.debuff:Up() or Player.enemies >= (1 + (not Nightstalker.known and not DarkShadow.known and 4 or 0))) and Player.combo_points.current <= 2 and Premeditation:Down() and (not Flagellation.known or not Flagellation:Ready()) then
@@ -2574,30 +2577,30 @@ actions.cds+=/use_items,if=buff.symbols_of_death.up|fight_remains<20
 			Player.pool_energy = 60
 			return UseCooldown(ShurikenTornado)
 		end
-		if Player:Energy() >= 60 then
+		if Player.energy.current >= 60 then
 			return UseCooldown(ShurikenTornado)
 		end
 	end
-	if SerratedBoneSpike:Usable() and ((self.snd_condition and SerratedBoneSpike:Down() and Target.timeToDie >= 21 and (Player:ComboPointsDeficit() >= (1 + SerratedBoneSpike:Ticking())) and ShurikenTornado:Down() and (Premeditation:Down() or Player.enemies > 4)) or (Player.enemies == 1 and Target.timeToDie < 5)) then
+	if SerratedBoneSpike:Usable() and ((self.snd_condition and SerratedBoneSpike:Down() and Target.timeToDie >= 21 and (Player.combo_points.deficit >= (1 + SerratedBoneSpike:Ticking())) and ShurikenTornado:Down() and (Premeditation:Down() or Player.enemies > 4)) or (Player.enemies == 1 and Target.timeToDie < 5)) then
 		return UseCooldown(SerratedBoneSpike)
 	end
-	if Sepsis:Usable() and self.snd_condition and Player:ComboPointsDeficit() >= 1 and Target.timeToDie >= 16 then
+	if Sepsis:Usable() and self.snd_condition and Player.combo_points.deficit >= 1 and Target.timeToDie >= 16 then
 		return UseCooldown(Sepsis)
 	end
 	if SymbolsOfDeath:Usable() and self.snd_condition and (not Player.stealthed or (PerforatedVeins.known and PerforatedVeins:Stack() < 4) or (Player.enemies > 4 and not self.use_priority_rotation)) and (not ShurikenTornado.known or ShadowFocus.known or Player.enemies >= 2 or ShurikenTornado:Cooldown() > 2) and (not Flagellation.known or Flagellation:Cooldown() > 10 or (Flagellation:Ready() and Player.combo_points.current >= 5)) then
 		return UseCooldown(SymbolsOfDeath)
 	end
 	if MarkedForDeath:Usable() and (
-		(Player.enemies > 1 and Target.timeToDie < Player:ComboPointsDeficit()) or
-		(not Player.stealthed and Player:ComboPointsDeficit() >= Player.combo_points.max_spend)
+		(Player.enemies > 1 and Target.timeToDie < Player.combo_points.deficit) or
+		(not Player.stealthed and Player.combo_points.deficit >= Player.combo_points.max_spend)
 	) then
 		return UseCooldown(MarkedForDeath)
 	end
 	if self.snd_condition then
-		if ShadowBlades:Usable() and ShadowBlades:Down() and Player:ComboPointsDeficit() >= 2 and (SymbolsOfDeath:Ready(1) or SymbolsOfDeath:Up() or (Target.boss and Target.timeToDie < 20) or (Player.set_bonus.t28 >= 2 and ShadowBlades:Down())) then
+		if ShadowBlades:Usable() and ShadowBlades:Down() and Player.combo_points.deficit >= 2 and (SymbolsOfDeath:Ready(1) or SymbolsOfDeath:Up() or (Target.boss and Target.timeToDie < 20) or (Player.set_bonus.t28 >= 2 and ShadowBlades:Down())) then
 			return UseCooldown(ShadowBlades)
 		end
-		if EchoingReprimand:Usable() and EchoingReprimand:Down() and Player:ComboPointsDeficit() >= 2 and (not ShadowFocus.known or not Player.stealthed or Player.enemies >= 4) and (self.use_priority_rotation or Player.enemies <= 4 or ResoundingClarity.known) then
+		if EchoingReprimand:Usable() and EchoingReprimand:Down() and Player.combo_points.deficit >= 2 and (not ShadowFocus.known or not Player.stealthed or Player.enemies >= 4) and (self.use_priority_rotation or Player.enemies <= 4 or ResoundingClarity.known) then
 			return UseCooldown(EchoingReprimand)
 		end
 		if ShurikenTornado:Usable() and (ShadowFocus.known or Player.enemies >= 2) and SymbolsOfDeath:Up() and Player.combo_points.current <= 2 and (Premeditation:Down() or Player.enemies > 4) then
@@ -2644,19 +2647,19 @@ actions.stealth_cds+=/shadow_dance,if=variable.shd_combo_points&fight_remains<co
 	else
 		self.shd_threshold = ShadowDance:ChargesFractional() >= ((EchoingReprimand.known and Player.set_bonus.t28 >= 2 and not SymbolsOfDeath:Ready(8)) and 1 or 1.75)
 	end
-	if Vanish:Usable() and not MarkOfTheMasterAssassin.known and (not self.shd_threshold or not Nightstalker.known and DarkShadow.known) and Player:ComboPointsDeficit() > 1 and (not PerforatedVeins.known or PerforatedVeins:Stack() < 6) then
+	if Vanish:Usable() and not MarkOfTheMasterAssassin.known and (not self.shd_threshold or not Nightstalker.known and DarkShadow.known) and Player.combo_points.deficit > 1 and (not PerforatedVeins.known or PerforatedVeins:Stack() < 6) then
 		return UseCooldown(Vanish)
 	end
-	if Shadowmeld:Usable() and not self.shd_threshold and Player:EnergyDeficit() >= 10 and Player:ComboPointsDeficit() > 1 and (not PerforatedVeins.known or PerforatedVeins:Stack() < 6) then
+	if Shadowmeld:Usable() and not self.shd_threshold and Player:EnergyDeficit() >= 10 and Player.combo_points.deficit > 1 and (not PerforatedVeins.known or PerforatedVeins:Stack() < 6) then
 		Player.pool_energy = 80
 		return UseCooldown(Shadowmeld)
 	end
 	if Player.enemies == 4 or (self.use_priority_rotation and Player.enemies >= 4) then
-		self.shd_combo_points = Player:ComboPointsDeficit() <= 1
+		self.shd_combo_points = Player.combo_points.deficit <= 1
 	elseif EchoingReprimand.known then
-		self.shd_combo_points = Player:ComboPointsDeficit() >= 3
+		self.shd_combo_points = Player.combo_points.deficit >= 3
 	else
-		self.shd_combo_points = Player:ComboPointsDeficit() >= (ShadowBlades:Up() and 3 or 2)
+		self.shd_combo_points = Player.combo_points.deficit >= (ShadowBlades:Up() and 3 or 2)
 	end
 	if ShadowDance:Usable() and (
 		not EnvelopingShadows.known or
@@ -2694,7 +2697,7 @@ actions.finish+=/eviscerate
 			return SliceAndDice
 		end
 	end
-	self.use_rupture = Rupture:Refreshable() and Target.timeToDie >= (Rupture:Remains() + ((4 * self.effective_combo_points) * Player.haste_factor))
+	self.use_rupture = Rupture:Refreshable() and Target.timeToDie >= (Rupture:Remains() + ((4 * Player.combo_points.effective) * Player.haste_factor))
 	self.skip_rupture = (MarkOfTheMasterAssassin.known and MarkOfTheMasterAssassin:Up()) or (not Nightstalker.known and DarkShadow.known and ShadowDance:Up()) or Player.enemies >= (Player.stealthed and ShadowFocus.known and 3 or 4)
 	if self.use_rupture and Rupture:Usable(0, true) and (not Player.stealthed or Rupture:Down()) and (not self.skip_rupture or self.use_priority_rotation) then
 		return Pool(Rupture)
@@ -2737,7 +2740,7 @@ actions.build+=/backstab,if=!covenant.kyrian|!(variable.is_next_cp_animacharged&
 	if Gloomblade:Usable() then
 		return Gloomblade
 	end
-	if Backstab:Usable() and (not EchoingReprimand.known or not (self.is_next_cp_animacharged and (ShadowTechniques:TimeTo(3) < 0.5 or ShadowTechniques:TimeTo(4) < 1) and Player:Energy() < 60)) then
+	if Backstab:Usable() and (not EchoingReprimand.known or not (self.is_next_cp_animacharged and (ShadowTechniques:TimeTo(3) < 0.5 or ShadowTechniques:TimeTo(4) < 1) and Player.energy.current < 60)) then
 		return Backstab
 	end
 end
@@ -2772,10 +2775,10 @@ actions.stealthed+=/cheap_shot,if=!target.is_boss&combo_points.deficit>=1&buff.s
 		return Shadowstrike
 	end
 	if (
-		self.effective_combo_points >= Player.combo_points.max_spend or
-		(ShurikenTornado.known and ShurikenTornado:Up() and Player:ComboPointsDeficit() <= 2) or
-		(Player.enemies >= 4 and self.effective_combo_points >= 4) or
-		(Player:ComboPointsDeficit() <= (1 - (DeeperStratagem.known and Vanish:Up() and 1 or 0)))
+		Player.combo_points.effective >= Player.combo_points.max_spend or
+		(ShurikenTornado.known and ShurikenTornado:Up() and Player.combo_points.deficit <= 2) or
+		(Player.enemies >= 4 and Player.combo_points.effective >= 4) or
+		(Player.combo_points.deficit <= (1 - (DeeperStratagem.known and Vanish:Up() and 1 or 0)))
 	) then
 		local apl = self:finish()
 		if apl then return apl end
@@ -2807,7 +2810,7 @@ actions.stealthed+=/cheap_shot,if=!target.is_boss&combo_points.deficit>=1&buff.s
 	if Shadowstrike:Usable() then
 		return Shadowstrike
 	end
-	if ShotInTheDark.known and CheapShot:Usable() and not Target.boss and Target.stunnable and Player:ComboPointsDeficit() >= 1 and ShotInTheDark:Up() and Player:EnergyTimeToMax(40) > 1 then
+	if ShotInTheDark.known and CheapShot:Usable() and not Target.boss and Target.stunnable and Player.combo_points.deficit >= 1 and ShotInTheDark:Up() and Player:EnergyTimeToMax(40) > 1 then
 		return CheapShot
 	end
 end
@@ -3258,7 +3261,7 @@ CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellS
 
 	local ability = spellId and abilities.bySpellId[spellId]
 	if not ability then
-		--print(format('EVENT %s TRACK CHECK FOR UNKNOWN %s ID %d', event, type(spellName) == 'string' and spellName or 'Unknown', spellId or 0))
+		print(format('EVENT %s TRACK CHECK FOR UNKNOWN %s ID %d', event, type(spellName) == 'string' and spellName or 'Unknown', spellId or 0))
 		return
 	end
 
@@ -3327,6 +3330,7 @@ end
 function events:UNIT_POWER_UPDATE(unitId, powerType)
 	if unitId == 'player' and powerType == 'COMBO_POINTS' then
 		Player.combo_points.current = UnitPower(unitId, 4)
+		Player.combo_points.deficit = Player.combo_points.max - Player.combo_points.current
 		UI:UpdateCombatWithin(0.05)
 	end
 end
