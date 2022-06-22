@@ -2147,10 +2147,7 @@ APL[SPEC.OUTLAW].Main = function(self)
 	self.rtb_remains = RollTheBones:Remains(true)
 	self.rtb_buffs = RollTheBones:Stack()
 	self.rtb_reroll = (self.rtb_buffs < 2 and (Broadside:Down() and (not ConcealedBlunderbuss.known or SkullAndCrossbones:Down()) and (not InvigoratingShadowdust.known or TrueBearing:Down()))) or (self.rtb_buffs == 2 and BuriedTreasure:Up() and GrandMelee:Up())
-	self.use_cds = Opt.cooldown and (Target.boss or Target.player or (not Opt.boss_only and Target.timeToDie > Opt.cd_ttd) or AdrenalineRush:Up())
-	self.ambush_condition = Player.combo_points.deficit >= (2 + (Broadside:Up() and 1 or 0)) and Player.energy.current >= 50 and (not CountTheOdds.known or not RollTheBones:Ready(30) or ((Broadside:Down() or TrueBearing:Down() or RuthlessPrecision:Down()) and (Broadside:Remains() > 15 or TrueBearing:Remains() > 15 or RuthlessPrecision:Remains() > 15)))
-	self.finish_condition = Player.combo_points.current >= (Player.combo_points.max_spend - (Broadside:Up() and 1 or 0) - (((QuickDraw.known and Opportunity:Up()) or (ConcealedBlunderbuss.known and ConcealedBlunderbuss:Up())) and 1 or 0)) or Player.combo_points.effective >= Player.combo_points.max_spend
-	self.blade_flurry_sync = Player.enemies < 2 or BladeFlurry:Remains() > (1 + (KillingSpree.known and 1 or 0))
+	self.use_cds = Opt.cooldown and (Target.boss or Target.player or (not Opt.boss_only and Target.timeToDie > Opt.cd_ttd) or AdrenalineRush:Up() or (Dreadblades.known and Dreadblades:Up()))
 
 	if Player:TimeInCombat() == 0 then
 --[[
@@ -2234,6 +2231,13 @@ actions+=/arcane_pulse
 actions+=/lights_judgment
 actions+=/bag_of_tricks
 ]]
+	self.ambush_condition = Player.combo_points.deficit >= (2 + (Broadside:Up() and 1 or 0)) and Player.energy.current >= 50 and (not CountTheOdds.known or not RollTheBones:Ready(30) or ((Broadside:Down() or TrueBearing:Down() or RuthlessPrecision:Down()) and (Broadside:Remains() > 15 or TrueBearing:Remains() > 15 or RuthlessPrecision:Remains() > 15)))
+	self.finish_condition = Player.combo_points.current >= (Player.combo_points.max_spend - (Broadside:Up() and 1 or 0) - (((QuickDraw.known and Opportunity:Up()) or (ConcealedBlunderbuss.known and ConcealedBlunderbuss:Up())) and 1 or 0)) or Player.combo_points.effective >= Player.combo_points.max_spend
+	if BetweenTheEyes:Ready() and Player.combo_points.effective < 5 then
+		self.finish_condition = false
+	end
+	self.blade_flurry_sync = Player.enemies < 2 or BladeFlurry:Remains() > (1 + (KillingSpree.known and 1 or 0))
+
 	if Player.stealthed then
 		return self:stealth()
 	end
@@ -2356,11 +2360,11 @@ end
 APL[SPEC.OUTLAW].finish = function(self)
 --[[
 # BtE to keep the Crit debuff up, if RP is up, or for Greenskins, unless the target is about to die.
-actions.finish=between_the_eyes,if=target.time_to_die>3&(debuff.between_the_eyes.remains<4|runeforge.greenskins_wickers&!buff.greenskins_wickers.up|!runeforge.greenskins_wickers&buff.ruthless_precision.up)
+actions.finish=between_the_eyes,if=target.time_to_die>3&(debuff.between_the_eyes.remains<4|runeforge.greenskins_wickers&!buff.greenskins_wickers.up&combo_points>=4|!runeforge.greenskins_wickers&buff.ruthless_precision.up)
 actions.finish+=/slice_and_dice,if=buff.slice_and_dice.remains<fight_remains&refreshable
 actions.finish+=/dispatch
 ]]
-	if BetweenTheEyes:Usable(Player:EnergyTimeToMax(50), true) and Target.timeToDie > 3 and (BetweenTheEyes:Remains() < 4 or (GreenskinsWickers.known and GreenskinsWickers:Down()) or (not GreenskinsWickers.known and RuthlessPrecision:Up())) then
+	if BetweenTheEyes:Usable(Player:EnergyTimeToMax(50), true) and Target.timeToDie > 3 and (BetweenTheEyes:Remains() < 4 or (GreenskinsWickers.known and Player.combo_points.current >= 4 and GreenskinsWickers:Down()) or (not GreenskinsWickers.known and RuthlessPrecision:Up())) then
 		return Pool(BetweenTheEyes)
 	end
 	if SliceAndDice:Usable(0, true) and SliceAndDice:Refreshable() and (Player.enemies > 1 or SliceAndDice:Remains() < Target.timeToDie) and (not Player.combo_points.anima_charged[Player.combo_points.current] or SliceAndDice:Down()) then
