@@ -1337,6 +1337,10 @@ local Trinket1 = InventoryItem:Add(0)
 local Trinket2 = InventoryItem:Add(0)
 Trinket.BottledFlayedwingToxin = InventoryItem:Add(178742)
 Trinket.BottledFlayedwingToxin.buff = Ability:Add(345545, true, true)
+Trinket.CacheOfAcquiredTreasures = InventoryItem:Add(188265)
+Trinket.CacheOfAcquiredTreasures.axe = Ability:Add(368656, true, true)
+--Trinket.CacheOfAcquiredTreasures.sword = Ability:Add(368657, true, true)
+--Trinket.CacheOfAcquiredTreasures.wand = Ability:Add(368654, true, true)
 Trinket.SoleahsSecretTechnique = InventoryItem:Add(190958)
 Trinket.SoleahsSecretTechnique.buff = Ability:Add(368512, true, true)
 -- End Inventory Items
@@ -2348,11 +2352,16 @@ actions.cds+=/use_items,slots=trinket2,if=debuff.between_the_eyes.up|trinket.2.h
 	if Opt.pot and Target.boss and not Player:InArenaOrBattleground() and PotionOfSpectralAgility:Usable() and (Player:BloodlustActive() or Target.timeToDie < 30 or AdrenalineRush:Remains() > 8) then
 		return UseCooldown(PotionOfSpectralAgility)
 	end
-	if Opt.trinket and ((Target.boss and Target.timeToDie < 20) or (MarkOfTheMasterAssassin.known and MarkOfTheMasterAssassin:Up()) or (not MarkOfTheMasterAssassin.known and BetweenTheEyes:Up() and (not GhostlyStrike.known or GhostlyStrike:Up()))) then
-		if Trinket1:Usable() then
-			return UseCooldown(Trinket1)
-		elseif Trinket2:Usable() then
-			return UseCooldown(Trinket2)
+	if Opt.trinket then
+		if Trinket.CacheOfAcquiredTreasures:Usable() and (Trinket.CacheOfAcquiredTreasures.axe:Up() or (Target.boss and Target.timeToDie < 25)) then
+			return UseCooldown(Trinket.CacheOfAcquiredTreasures)
+		end
+		if (Target.boss and Target.timeToDie < 20) or (MarkOfTheMasterAssassin.known and MarkOfTheMasterAssassin:Up()) or (not MarkOfTheMasterAssassin.known and BetweenTheEyes:Up() and (not GhostlyStrike.known or GhostlyStrike:Up())) then
+			if Trinket1:Usable() then
+				return UseCooldown(Trinket1)
+			elseif Trinket2:Usable() then
+				return UseCooldown(Trinket2)
+			end
 		end
 	end
 end
