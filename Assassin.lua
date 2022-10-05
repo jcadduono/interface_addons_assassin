@@ -1221,7 +1221,7 @@ PerforatedVeins.conduit_id = 248
 -- Legendary effects
 local AkaarisSoulFragment = Ability:Add(340090, false, true)
 AkaarisSoulFragment.bonus_id = 7124
-local ConcealedBlunderbuss = Ability:Add(340088, false, true, 340587)
+local ConcealedBlunderbuss = Ability:Add(340088, true, true, 340587)
 ConcealedBlunderbuss.buff_duration = 10
 ConcealedBlunderbuss.bonus_id = 7122
 local DeathlyShadows = Ability:Add(340092, true, true, 341202)
