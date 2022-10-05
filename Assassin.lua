@@ -1339,8 +1339,8 @@ Trinket.BottledFlayedwingToxin = InventoryItem:Add(178742)
 Trinket.BottledFlayedwingToxin.buff = Ability:Add(345545, true, true)
 Trinket.CacheOfAcquiredTreasures = InventoryItem:Add(188265)
 Trinket.CacheOfAcquiredTreasures.axe = Ability:Add(368656, true, true)
---Trinket.CacheOfAcquiredTreasures.sword = Ability:Add(368657, true, true)
---Trinket.CacheOfAcquiredTreasures.wand = Ability:Add(368654, true, true)
+Trinket.CacheOfAcquiredTreasures.sword = Ability:Add(368657, true, true)
+Trinket.CacheOfAcquiredTreasures.wand = Ability:Add(368654, true, true)
 Trinket.SoleahsSecretTechnique = InventoryItem:Add(190958)
 Trinket.SoleahsSecretTechnique.buff = Ability:Add(368512, true, true)
 -- End Inventory Items
@@ -2663,11 +2663,16 @@ actions.cds+=/use_items,if=buff.symbols_of_death.up|fight_remains<20
 	if Opt.pot and Target.boss and PotionOfSpectralAgility:Usable() and (Player:BloodlustActive() or Target.timeToDie < 30 or SymbolsOfDeath:Up() and (ShadowBlades:Up() or ShadowBlades:Ready(10))) then
 		return UseCooldown(PotionOfSpectralAgility)
 	end
-	if Opt.trinket and (Target.timeToDie < 20 or SymbolsOfDeath:Remains() > 6) then
-		if Trinket1:Usable() then
-			return UseCooldown(Trinket1)
-		elseif Trinket2:Usable() then
-			return UseCooldown(Trinket2)
+	if Opt.trinket then
+		if Trinket.CacheOfAcquiredTreasures:Usable() and ((Player.enemies > 1 and Trinket.CacheOfAcquiredTreasures.axe:Up()) or ((Player.enemies == 1 or (Target.boss and Target.timeToDie < 25)) and ((Flagellation.known and Trinket.CacheOfAcquiredTreasures.axe:Up()) or (not Flagellation.known and Trinket.CacheOfAcquiredTreasures.wand:Up())))) then
+			return UseCooldown(Trinket.CacheOfAcquiredTreasures)
+		end
+		if (Target.boss and Target.timeToDie < 20) or SymbolsOfDeath:Remains() > 6 then
+			if Trinket1:Usable() then
+				return UseCooldown(Trinket1)
+			elseif Trinket2:Usable() then
+				return UseCooldown(Trinket2)
+			end
 		end
 	end
 end
