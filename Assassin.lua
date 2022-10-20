@@ -3369,14 +3369,14 @@ function events:PLAYER_TARGET_CHANGED()
 	end
 end
 
-function events:UNIT_FACTION(unitID)
-	if unitID == 'target' then
+function events:UNIT_FACTION(unitId)
+	if unitId == 'target' then
 		Target:Update()
 	end
 end
 
-function events:UNIT_FLAGS(unitID)
-	if unitID == 'target' then
+function events:UNIT_FLAGS(unitId)
+	if unitId == 'target' then
 		Target:Update()
 	end
 end
@@ -3389,14 +3389,14 @@ function events:UNIT_POWER_UPDATE(unitId, powerType)
 	end
 end
 
-function events:UNIT_SPELLCAST_START(unitID, castGUID, spellId)
-	if Opt.interrupt and unitID == 'target' then
+function events:UNIT_SPELLCAST_START(unitId, castGUID, spellId)
+	if Opt.interrupt and unitId == 'target' then
 		UI:UpdateCombatWithin(0.05)
 	end
 end
 
-function events:UNIT_SPELLCAST_STOP(unitID, castGUID, spellId)
-	if Opt.interrupt and unitID == 'target' then
+function events:UNIT_SPELLCAST_STOP(unitId, castGUID, spellId)
+	if Opt.interrupt and unitId == 'target' then
 		UI:UpdateCombatWithin(0.05)
 	end
 end
@@ -3404,7 +3404,7 @@ events.UNIT_SPELLCAST_FAILED = events.UNIT_SPELLCAST_STOP
 events.UNIT_SPELLCAST_INTERRUPTED = events.UNIT_SPELLCAST_STOP
 
 function events:UNIT_SPELLCAST_SENT(unitId, destName, castGUID, spellId)
-	if unitID ~= 'player' or not spellId or castGUID:sub(6, 6) ~= '3' then
+	if unitId ~= 'player' or not spellId or castGUID:sub(6, 6) ~= '3' then
 		return
 	end
 	local ability = abilities.bySpellId[spellId]
@@ -3419,8 +3419,8 @@ function events:UNIT_SPELLCAST_SENT(unitId, destName, castGUID, spellId)
 	end
 end
 
-function events:UNIT_SPELLCAST_SUCCEEDED(unitID, castGUID, spellId)
-	if unitID ~= 'player' or not spellId or castGUID:sub(6, 6) ~= '3' then
+function events:UNIT_SPELLCAST_SUCCEEDED(unitId, castGUID, spellId)
+	if unitId ~= 'player' or not spellId or castGUID:sub(6, 6) ~= '3' then
 		return
 	end
 	local ability = abilities.bySpellId[spellId]
