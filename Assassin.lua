@@ -1000,16 +1000,6 @@ EchoingReprimand[2] = Ability:Add(323558, true, true)
 EchoingReprimand[3] = Ability:Add(323559, true, true)
 EchoingReprimand[4] = Ability:Add(323560, true, true)
 EchoingReprimand[5] = Ability:Add(354838, true, true)
-EchoingReprimand.finishers = {
-	[BetweenTheEyes] = true,
-	[BlackPowder] = true,
-	[DeathFromAbove] = true,
-	[Dispatch] = true,
-	[Envenom] = true,
-	[Eviscerate] = true,
-	[Rupture] = true,
-	[SecretTechnique] = true,
-}
 local MarkedForDeath = Ability:Add(137619, false, true)
 MarkedForDeath.cooldown_duration = 60
 MarkedForDeath.triggers_gcd = false
@@ -1020,6 +1010,10 @@ local Weaponmaster = Ability:Add({193537, 200733}, false, true)
 ------ Procs
 
 ------ Poisons
+local AtrophicPoison = Ability:Add(381637, true, true)
+AtrophicPoison.buff_duration = 3600
+AtrophicPoison.dot = Ability:Add(392388)
+AtrophicPoison.dot.buff_duration = 10
 local CripplingPoison = Ability:Add(3408, true, true)
 CripplingPoison.buff_duration = 3600
 CripplingPoison.dot = Ability:Add(3409)
@@ -1201,11 +1195,11 @@ local Gloomblade = Ability:Add(200758, false, true)
 Gloomblade.energy_cost = 35
 local DarkShadow = Ability:Add(245687, false, true)
 local EnvelopingShadows = Ability:Add(238104, true, true)
-local Flagellation = Ability:Add(323654, true, true)
+local Flagellation = Ability:Add(384631, false, true)
 Flagellation.buff_duration = 12
 Flagellation.cooldown_duration = 90
-Flagellation.debuff = Ability:Add(323654, false, true)
-Flagellation.debuff.buff_duration = 12
+Flagellation.buff = Ability:Add(394758, true, true)
+Flagellation.buff.buff_duration = 12
 local MasterOfShadows = Ability:Add(196976, false, true)
 local Premeditation = Ability:Add(343160, true, true, 343173)
 local SecretTechnique = Ability:Add(280719, true, true)
@@ -1464,7 +1458,9 @@ function Player:UpdatePoisons()
 		end
 	end
 	if not Opt.last_poison.nonlethal then
-		if CripplingPoison.known then
+		if AtrophicPoison.known then
+			Opt.last_poison.nonlethal = AtrophicPoison.spellId
+		elseif CripplingPoison.known then
 			Opt.last_poison.nonlethal = CripplingPoison.spellId
 		elseif NumbingPoison.known then
 			Opt.last_poison.nonlethal = NumbingPoison.spellId
@@ -1586,7 +1582,7 @@ function Player:Update()
 		self.cast.start = 0
 		self.cast.ends = 0
 	end
-	self.execute_remains = max(self.cast_remains, self.gcd_remains)
+	self.execute_remains = max(self.cast.ends - self.ctime, self.gcd_remains)
 	self.energy.regen = GetPowerRegenForPowerType(3)
 	self.energy.max = UnitPowerMax('player', 3)
 	self.energy.current = UnitPower('player', 3) + (self.energy.regen * self.execute_remains)
@@ -1804,6 +1800,17 @@ function Shiv:EnergyCost()
 	return Ability.EnergyCost(self)
 end
 
+EchoingReprimand.finishers = {
+	[BetweenTheEyes] = true,
+	[BlackPowder] = true,
+	[DeathFromAbove] = true,
+	[Dispatch] = true,
+	[Envenom] = true,
+	[Eviscerate] = true,
+	[Rupture] = true,
+	[SecretTechnique] = true,
+}
+
 function EchoingReprimand:Remains()
 	local remains
 	for i = 2, 5 do
@@ -1887,12 +1894,13 @@ end
 WoundPoison.CastSuccess = InstantPoison.CastSuccess
 DeadlyPoison.CastSuccess = InstantPoison.CastSuccess
 
-function CripplingPoison:CastSuccess(...)
+function AtrophicPoison:CastSuccess(...)
 	Ability.CastSuccess(self, ...)
 	Opt.last_poison.nonlethal = self.spellId
 	Player.poison.nonlethal = self
 end
-NumbingPoison.CastSuccess = CripplingPoison.CastSuccess
+CripplingPoison.CastSuccess = AtrophicPoison.CastSuccess
+NumbingPoison.CastSuccess = AtrophicPoison.CastSuccess
 
 -- End Ability Modifications
 
@@ -2244,24 +2252,24 @@ actions.cds+=/use_items,slots=trinket2,if=debuff.between_the_eyes.up|trinket.2.h
 	if self.use_cds and Flagellation:Usable() and not Player.stealthed and (self.finish_condition or Target.timeToDie < 13) then
 		return UseCooldown(Flagellation)
 	end
-	if self.use_cds and Dreadblades:Usable() and not Player.stealthed and Player.combo_points.effective <= 2 and (not Flagellation.known or Flagellation.debuff:Up()) and (not MarkedForDeath.known or not MarkedForDeath:Ready()) then
+	if self.use_cds and Dreadblades:Usable() and not Player.stealthed and Player.combo_points.effective <= 2 and (not Flagellation.known or Flagellation:Up()) and (not MarkedForDeath.known or not MarkedForDeath:Ready()) then
 		return UseCooldown(Dreadblades)
 	end
 	if RollTheBones:Usable() and (not MarkOfTheMasterAssassin.known or MarkOfTheMasterAssassin:Down()) and (not Dreadblades.known or Dreadblades:Down()) and (self.rtb_reroll or (self.rtb_remains < (4 - self.rtb_buffs) and (Broadside:Down() or (self.finish_condition and RuthlessPrecision:Down() and TrueBearing:Down())))) then
 		return UseCooldown(RollTheBones)
 	end
-	if MarkedForDeath:Usable() and (Target.timeToDie < Player.combo_points.deficit or (not Player.stealthed and Player.combo_points.deficit >= (Player.combo_points.max_spend - 1) and (not Flagellation.known or not Flagellation:Ready(10) or Flagellation.debuff:Up()))) then
+	if MarkedForDeath:Usable() and (Target.timeToDie < Player.combo_points.deficit or (not Player.stealthed and Player.combo_points.deficit >= (Player.combo_points.max_spend - 1) and (not Flagellation.known or not Flagellation:Ready(10) or Flagellation:Up()))) then
 		return UseCooldown(MarkedForDeath)
 	end
 	self.killing_spree_vanish_sync = not MarkOfTheMasterAssassin.known or not Vanish:Ready(10) or MarkOfTheMasterAssassin:Remains() > 2
 	if self.use_cds and KillingSpree:Usable() and self.blade_flurry_sync and self.killing_spree_vanish_sync and not Player.stealthed and ((BetweenTheEyes:Up() and (not Dreadblades.known or Dreadblades:Down()) and Player.energy.deficit > (Player.energy.regen * 2 + 15)) or Player.enemies > (2 - (DeathlyShadows.known and DeathlyShadows:Up() and 1 or 0)) or (MarkOfTheMasterAssassin.known and MarkOfTheMasterAssassin:Up())) then
 		return UseCooldown(KillingSpree)
 	end
-	if self.use_cds and BladeRush:Usable() and self.blade_flurry_sync and ((Player:EnergyTimeToMax() > 2 and (not Dreadblades.known or Dreadblades:Down()) and (not Flagellation.known or Flagellation.debuff:Down())) or Player.energy.current <= 30 or Player.enemies > 2) then
+	if self.use_cds and BladeRush:Usable() and self.blade_flurry_sync and ((Player:EnergyTimeToMax() > 2 and (not Dreadblades.known or Dreadblades:Down()) and (not Flagellation.known or Flagellation:Down())) or Player.energy.current <= 30 or Player.enemies > 2) then
 		return UseCooldown(BladeRush)
 	end
 	if self.use_cds and Vanish:Usable() and not Player.stealthed and InvigoratingShadowdust.known and (
-		(Flagellation.known and self.ambush_condition and not Flagellation:Ready() and (not Dreadblades.known or not Dreadblades:Ready() or Flagellation.debuff:Up())) or
+		(Flagellation.known and self.ambush_condition and not Flagellation:Ready() and (not Dreadblades.known or not Dreadblades:Ready() or Flagellation:Up())) or
 		(not Flagellation.known and ((EchoingReprimand.known and not EchoingReprimand:Ready(6)) or (Sepsis.known and not Sepsis:Ready()) or (SerratedBoneSpike.known and SerratedBoneSpike:FullRechargeTime() > 20)))
 	) then
 		UseExtra(Vanish)
@@ -2273,9 +2281,6 @@ actions.cds+=/use_items,slots=trinket2,if=debuff.between_the_eyes.up|trinket.2.h
 		return UseCooldown(PotionOfSpectralAgility)
 	end
 	if Opt.trinket then
-		if Trinket.CacheOfAcquiredTreasures:Usable() and (Trinket.CacheOfAcquiredTreasures.axe:Up() or (Target.boss and Target.timeToDie < 25)) then
-			return UseCooldown(Trinket.CacheOfAcquiredTreasures)
-		end
 		if (Target.boss and Target.timeToDie < 20) or (MarkOfTheMasterAssassin.known and MarkOfTheMasterAssassin:Up()) or (not MarkOfTheMasterAssassin.known and BetweenTheEyes:Up() and (not GhostlyStrike.known or GhostlyStrike:Up())) then
 			if Trinket1:Usable() then
 				return UseCooldown(Trinket1)
@@ -2376,6 +2381,7 @@ actions.precombat+=/shadow_blades,if=runeforge.mark_of_the_master_assassin
 		end
 		if not Player:InArenaOrBattleground() then
 
+		end
 		if not Player.stealthed then
 			return Stealth
 		end
@@ -2518,7 +2524,7 @@ actions.cds+=/use_items,if=buff.symbols_of_death.up|fight_remains<20
 	if Vanish:Usable() and ((MarkOfTheMasterAssassin.known and Player.combo_points.deficit <= (DeeperStratagem.known and 0 or 1)) or (DeathlyShadows.known and Player.combo_points.current < 1)) and SymbolsOfDeath:Up() and ShadowDance:Up() and MarkOfTheMasterAssassin:Down() and DeathlyShadows:Down() then
 		return UseCooldown(Vanish)
 	end
-	if ShurikenTornado:Usable(0, true) and Player.enemies <= 1 and self.snd_condition and not (Stealth:Up() or Vanish:Up() or Shadowmeld:Up()) and SymbolsOfDeath:Ready() and ShadowDance:Charges() >= 1 and (not Obedience.known or Flagellation.debuff:Up() or Player.enemies >= (1 + (not Nightstalker.known and not DarkShadow.known and 4 or 0))) and Player.combo_points.current <= 2 and Premeditation:Down() and (not Flagellation.known or not Flagellation:Ready()) then
+	if ShurikenTornado:Usable(0, true) and Player.enemies <= 1 and self.snd_condition and not (Stealth:Up() or Vanish:Up() or Shadowmeld:Up()) and SymbolsOfDeath:Ready() and ShadowDance:Charges() >= 1 and (not Obedience.known or Flagellation:Up() or Player.enemies >= (1 + (not Nightstalker.known and not DarkShadow.known and 4 or 0))) and Player.combo_points.current <= 2 and Premeditation:Down() and (not Flagellation.known or not Flagellation:Ready()) then
 		if not ShadowFocus.known then
 			Player.pool_energy = 60
 			return UseCooldown(ShurikenTornado)
@@ -2543,7 +2549,7 @@ actions.cds+=/use_items,if=buff.symbols_of_death.up|fight_remains<20
 		return UseCooldown(MarkedForDeath)
 	end
 	if self.snd_condition then
-		if ShadowBlades:Usable() and ShadowBlades:Down() and Player.combo_points.deficit >= 2 and (SymbolsOfDeath:Ready(1) or SymbolsOfDeath:Up() or (Target.boss and Target.timeToDie < 20) or (Player.set_bonus.t28 >= 2 and ShadowBlades:Down())) then
+		if ShadowBlades:Usable() and ShadowBlades:Down() and Player.combo_points.deficit >= 2 and (SymbolsOfDeath:Ready(1) or SymbolsOfDeath:Up() or (Target.boss and Target.timeToDie < 20)) then
 			return UseCooldown(ShadowBlades)
 		end
 		if EchoingReprimand:Usable() and EchoingReprimand:Down() and Player.combo_points.deficit >= 2 and (not ShadowFocus.known or not Player.stealthed or Player.enemies >= 4) and (self.use_priority_rotation or Player.enemies <= 4 or ResoundingClarity.known) then
@@ -2560,9 +2566,6 @@ actions.cds+=/use_items,if=buff.symbols_of_death.up|fight_remains<20
 		return UseCooldown(PotionOfSpectralAgility)
 	end
 	if Opt.trinket then
-		if Trinket.CacheOfAcquiredTreasures:Usable() and ((Player.enemies > 1 and Trinket.CacheOfAcquiredTreasures.axe:Up()) or ((Player.enemies == 1 or (Target.boss and Target.timeToDie < 25)) and ((Flagellation.known and Trinket.CacheOfAcquiredTreasures.axe:Up()) or (not Flagellation.known and Trinket.CacheOfAcquiredTreasures.wand:Up())))) then
-			return UseCooldown(Trinket.CacheOfAcquiredTreasures)
-		end
 		if (Target.boss and Target.timeToDie < 20) or SymbolsOfDeath:Remains() > 6 then
 			if Trinket1:Usable() then
 				return UseCooldown(Trinket1)
@@ -2596,7 +2599,7 @@ actions.stealth_cds+=/shadow_dance,if=variable.shd_combo_points&fight_remains<co
 	if TheRotten.known then
 		self.shd_threshold = ShadowDance:ChargesFractional() >= 1.75 or not SymbolsOfDeath:Ready(16)
 	else
-		self.shd_threshold = ShadowDance:ChargesFractional() >= ((EchoingReprimand.known and Player.set_bonus.t28 >= 2 and not SymbolsOfDeath:Ready(8)) and 1 or 1.75)
+		self.shd_threshold = ShadowDance:ChargesFractional() >= 1.75
 	end
 	if Vanish:Usable() and not MarkOfTheMasterAssassin.known and (not self.shd_threshold or not Nightstalker.known and DarkShadow.known) and Player.combo_points.deficit > 1 and (not PerforatedVeins.known or PerforatedVeins:Stack() < 6) then
 		return UseCooldown(Vanish)
@@ -2749,7 +2752,7 @@ actions.stealthed+=/cheap_shot,if=!target.is_boss&combo_points.deficit>=1&buff.s
 	) then
 		return Shadowstrike
 	end
-	if ShurikenStorm:Usable() and Player.enemies >= (3 + (((TheRotten.known and TheRotten:Up()) or AkaarisSoulFragment.known or (Player.set_bonus.t28 >= 2 and ShadowFocus.known)) and 1 or 0)) and (SymbolsOfDeath.autocrit:Up() or Premeditation:Down() or Player.enemies >= 5) then
+	if ShurikenStorm:Usable() and Player.enemies >= (3 + (((TheRotten.known and TheRotten:Up()) or AkaarisSoulFragment.known) and 1 or 0)) and (SymbolsOfDeath.autocrit:Up() or Premeditation:Down() or Player.enemies >= 5) then
 		return ShurikenStorm
 	end
 	if Shadowstrike:Usable() and (FindWeakness:Remains() < 1 or (SymbolsOfDeath:Ready(18) and FindWeakness:Remains() < SymbolsOfDeath:Cooldown())) then
