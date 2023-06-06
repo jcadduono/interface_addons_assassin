@@ -124,6 +124,23 @@ local CombatEvent = {}
 -- automatically registered events container
 local events = {}
 
+local Ability = {}
+Ability.__index = Ability
+local abilities = {
+	all = {},
+	bySpellId = {},
+	velocity = {},
+	autoAoe = {},
+	trackAuras = {},
+}
+
+local autoAoe = {
+	targets = {},
+	blacklist = {},
+	ignored_units = {
+	},
+}
+
 local timer = {
 	combat = 0,
 	display = 0,
@@ -213,6 +230,7 @@ local Player = {
 	},
 	main_freecast = false,
 	poison = {},
+	stealth_time = 0,
 }
 
 -- current target information
@@ -424,14 +442,6 @@ end
 
 -- Start Auto AoE
 
-local autoAoe = {
-	targets = {},
-	blacklist = {},
-	ignored_units = {
-		[120651] = true, -- Explosives (Mythic+ affix)
-	},
-}
-
 function autoAoe:Add(guid, update)
 	if self.blacklist[guid] then
 		return
@@ -458,9 +468,16 @@ function autoAoe:Remove(guid)
 end
 
 function autoAoe:Clear()
+	for _, ability in next, abilities.autoAoe do
+		ability.auto_aoe.start_time = nil
+		for guid in next, ability.auto_aoe.targets do
+			ability.auto_aoe.targets[guid] = nil
+		end
+	end
 	for guid in next, self.targets do
 		self.targets[guid] = nil
 	end
+	self:Update()
 end
 
 function autoAoe:Update()
@@ -504,16 +521,6 @@ end
 -- End Auto AoE
 
 -- Start Abilities
-
-local Ability = {}
-Ability.__index = Ability
-local abilities = {
-	all = {},
-	bySpellId = {},
-	velocity = {},
-	autoAoe = {},
-	trackAuras = {},
-}
 
 function Ability:Add(spellId, buff, player, spellId2)
 	local ability = {
@@ -807,10 +814,12 @@ end
 function Ability:UpdateTargetsHit()
 	if self.auto_aoe.start_time and Player.time - self.auto_aoe.start_time >= 0.3 then
 		self.auto_aoe.start_time = nil
-		if self.auto_aoe.remove then
-			autoAoe:Clear()
-		end
 		self.auto_aoe.target_count = 0
+		if self.auto_aoe.remove then
+			for guid in next, autoAoe.targets do
+				autoAoe.targets[guid] = nil
+			end
+		end
 		for guid in next, self.auto_aoe.targets do
 			autoAoe:Add(guid)
 			self.auto_aoe.targets[guid] = nil
@@ -980,7 +989,7 @@ Rupture.cp_cost = 1
 Rupture.tick_interval = 2
 Rupture.hasted_ticks = true
 Rupture:TrackAuras()
-Rupture:AutoAoe(false, 'cast')
+Rupture:AutoAoe(false, 'apply')
 local ShadowDance = Ability:Add(185313, true, true, 185422)
 ShadowDance.buff_duration = 6
 ShadowDance.cooldown_duration = 60
@@ -1199,7 +1208,6 @@ Backstab.energy_cost = 35
 local Shadowstrike = Ability:Add(185438, false, true)
 Shadowstrike.energy_cost = 40
 Shadowstrike.requires_stealth = true
-Shadowstrike:AutoAoe(false)
 local ShadowTechniques = Ability:Add(196912, true, true, 196911)
 local ShurikenStorm = Ability:Add(197835, false, true)
 ShurikenStorm.energy_cost = 35
@@ -1913,6 +1921,12 @@ function AtrophicPoison:CastSuccess(...)
 end
 CripplingPoison.CastSuccess = AtrophicPoison.CastSuccess
 NumbingPoison.CastSuccess = AtrophicPoison.CastSuccess
+
+function Vanish:CastSuccess(...)
+	Ability.CastSuccess(self, ...)
+	Player.stealth_time = Player.time
+end
+Shadowmeld.CastSuccess = Vanish.CastSuccess
 
 -- End Ability Modifications
 
@@ -3215,7 +3229,7 @@ CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellS
 		return -- ignore buffs beyond here
 	end
 	if Opt.auto_aoe then
-		if event == 'SPELL_MISSED' and (missType == 'EVADE' or missType == 'IMMUNE') then
+		if event == 'SPELL_MISSED' and (missType == 'EVADE' or (missType == 'IMMUNE' and not ability.ignore_immune)) then
 			autoAoe:Remove(dstGUID)
 		elseif ability.auto_aoe and (event == ability.auto_aoe.trigger or ability.auto_aoe.trigger == 'SPELL_AURA_APPLIED' and event == 'SPELL_AURA_REFRESH') then
 			ability:RecordTargetHit(dstGUID)
@@ -3317,10 +3331,12 @@ function events:UNIT_SPELLCAST_SUCCEEDED(unitId, castGUID, spellId)
 end
 
 function events:PLAYER_REGEN_DISABLED()
-	Player.combat_start = GetTime() - Player.time_diff
+	Player:UpdateTime()
+	Player.combat_start = Player.time
 end
 
 function events:PLAYER_REGEN_ENABLED()
+	Player:UpdateTime()
 	Player.combat_start = 0
 	Player.swing.last_taken = 0
 	Target.estimated_range = 30
@@ -3334,15 +3350,8 @@ function events:PLAYER_REGEN_ENABLED()
 			ability.traveling[guid] = nil
 		end
 	end
-	if Opt.auto_aoe then
-		for _, ability in next, abilities.autoAoe do
-			ability.auto_aoe.start_time = nil
-			for guid in next, ability.auto_aoe.targets do
-				ability.auto_aoe.targets[guid] = nil
-			end
-		end
+	if Opt.auto_aoe and (Player.time - Player.stealth_time) > 3 then
 		autoAoe:Clear()
-		autoAoe:Update()
 	end
 end
 
