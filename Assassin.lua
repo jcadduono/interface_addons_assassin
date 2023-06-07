@@ -549,6 +549,7 @@ function Ability:Add(spellId, buff, player, spellId2)
 		tick_interval = 0,
 		max_range = 40,
 		velocity = 0,
+		last_gained = 0,
 		last_used = 0,
 		aura_target = buff and 'player' or 'target',
 		aura_filter = (buff and 'HELPFUL' or 'HARMFUL') .. (player and '|PLAYER' or '')
@@ -1245,8 +1246,10 @@ Finality.Rupture.buff_duration = 20
 local Flagellation = Ability:Add(384631, false, true)
 Flagellation.buff_duration = 12
 Flagellation.cooldown_duration = 90
-Flagellation.buff = Ability:Add(394758, true, true)
-Flagellation.buff.buff_duration = 12
+Flagellation.buff = Ability:Add(384631, true, true)
+Flagellation.buff_duration = 12
+Flagellation.persist = Ability:Add(394758, true, true)
+Flagellation.persist.buff_duration = 12
 local ImprovedShurikenStorm = Ability:Add(319951, true, true)
 local InvigoratingShadowdust = Ability:Add(382523, true, true)
 InvigoratingShadowdust.talent_node = 90706
@@ -1764,6 +1767,10 @@ function CheapShot:Usable(seconds, pool)
 end
 Gouge.Usable = CheapShot.Usable
 KidneyShot.Usable = CheapShot.Usable
+
+function DanseMacabre:UsedFor(ability)
+	return ability.last_used > self.last_gained
+end
 
 function Envenom:Duration()
 	return self.buff_duration + Player.combo_points.current
@@ -2359,10 +2366,11 @@ actions.precombat=apply_poison
 actions.precombat+=/flask
 actions.precombat+=/augmentation
 actions.precombat+=/food
-# Snapshot raid buffed stats before combat begins and pre-potting is done.
 actions.precombat+=/snapshot_stats
 actions.precombat+=/stealth
 actions.precombat+=/marked_for_death,precombat_seconds=15
+actions.precombat+=/variable,name=algethar_puzzle_box_precombat_cast,value=3
+actions.precombat+=/use_item,name=algethar_puzzle_box
 actions.precombat+=/slice_and_dice,precombat_seconds=1
 ]]
 		if Opt.poisons then
@@ -2389,57 +2397,37 @@ actions.precombat+=/slice_and_dice,precombat_seconds=1
 
 	end
 --[[
-# Restealth if possible (no vulnerable enemies in combat)
 actions=stealth
-# Interrupt on cooldown to allow simming interactions with that
 actions+=/kick
-# Used to determine whether cooldowns wait for SnD based on targets.
-actions+=/variable,name=snd_condition,value=buff.slice_and_dice.up|spell_targets.shuriken_storm>=6
-# Check to see if the next CP (in the event of a ShT proc) is Animacharged
-actions+=/variable,name=is_next_cp_animacharged,if=covenant.kyrian,value=combo_points=1&buff.echoing_reprimand_2.up|combo_points=2&buff.echoing_reprimand_3.up|combo_points=3&buff.echoing_reprimand_4.up|combo_points=4&buff.echoing_reprimand_5.up
-# Account for ShT reaction time by ignoring low-CP animacharged matches in the 0.5s preceeding a potential ShT proc
+actions+=/variable,name=snd_condition,value=buff.slice_and_dice.up|spell_targets.shuriken_storm>=cp_max_spend
+actions+=/variable,name=is_next_cp_animacharged,if=talent.echoing_reprimand.enabled,value=combo_points=1&buff.echoing_reprimand_2.up|combo_points=2&buff.echoing_reprimand_3.up|combo_points=3&buff.echoing_reprimand_4.up|combo_points=4&buff.echoing_reprimand_5.up
 actions+=/variable,name=effective_combo_points,value=effective_combo_points
-actions+=/variable,name=effective_combo_points,if=covenant.kyrian&effective_combo_points>combo_points&combo_points.deficit>2&time_to_sht.4.plus<0.5&!variable.is_next_cp_animacharged,value=combo_points
-# Check CDs at first
+actions+=/variable,name=effective_combo_points,if=talent.echoing_reprimand.enabled&effective_combo_points>combo_points&combo_points.deficit>2&time_to_sht.4.plus<0.5&!variable.is_next_cp_animacharged,value=combo_points
 actions+=/call_action_list,name=cds
-# Apply Slice and Dice at 2+ CP during the first 10 seconds, after that 4+ CP if it expires within the next GCD or is not up
-actions+=/slice_and_dice,if=spell_targets.shuriken_storm<6&fight_remains>6&buff.slice_and_dice.remains<gcd.max&combo_points>=4-(time<10)*2
-# Run fully switches to the Stealthed Rotation (by doing so, it forces pooling if nothing is available).
+actions+=/slice_and_dice,if=spell_targets.shuriken_storm<cp_max_spend&buff.slice_and_dice.remains<gcd.max&fight_remains>6&combo_points>=4
 actions+=/run_action_list,name=stealthed,if=stealthed.all
-# Only change rotation if we have priority_rotation set and multiple targets up.
-actions+=/variable,name=use_priority_rotation,value=priority_rotation&spell_targets.shuriken_storm>=2
-# Priority Rotation? Let's give a crap about energy for the stealth CDs (builder still respect it). Yup, it can be that simple.
-actions+=/call_action_list,name=stealth_cds,if=variable.use_priority_rotation
-# Used to define when to use stealth CDs or builders
+actions+=/variable,name=priority_rotation,value=priority_rotation
 actions+=/variable,name=stealth_threshold,value=25+talent.vigor.enabled*20+talent.master_of_shadows.enabled*20+talent.shadow_focus.enabled*25+talent.alacrity.enabled*20+25*(spell_targets.shuriken_storm>=4)
-# Consider using a Stealth CD when reaching the energy threshold
 actions+=/call_action_list,name=stealth_cds,if=energy.deficit<=variable.stealth_threshold
 actions+=/call_action_list,name=finish,if=variable.effective_combo_points>=cp_max_spend
-# Finish at 4+ without DS or with SoD crit buff, 5+ with DS (outside stealth)
-actions+=/call_action_list,name=finish,if=combo_points.deficit<=1|fight_remains<=1&variable.effective_combo_points>=3
-# With DS also finish at 4+ against 4 targets (outside stealth)
-actions+=/call_action_list,name=finish,if=spell_targets.shuriken_storm>=4&variable.effective_combo_points>=4
-# Use a builder when reaching the energy threshold
+actions+=/call_action_list,name=finish,if=combo_points.deficit<=1+buff.the_rotten.up|fight_remains<=1&variable.effective_combo_points>=3
+actions+=/call_action_list,name=finish,if=spell_targets.shuriken_storm>=(4-talent.seal_fate)&variable.effective_combo_points>=4
 actions+=/call_action_list,name=build,if=energy.deficit<=variable.stealth_threshold
-# Lowest priority in all of the APL because it causes a GCD
 actions+=/arcane_torrent,if=energy.deficit>=15+energy.regen
 actions+=/arcane_pulse
 actions+=/lights_judgment
 actions+=/bag_of_tricks
 ]]
-	self.snd_condition = Player.enemies >= 6 or SliceAndDice:Up()
+	self.snd_condition = Player.enemies >= Player.combo_points.max_spend or SliceAndDice:Up()
 	self.is_next_cp_animacharged = EchoingReprimand.known and Player.combo_points.anima_charged[Player.combo_points.current + 1]
 	if EchoingReprimand.known and Player.combo_points.effective > Player.combo_points.current and Player.combo_points.deficit > 2 and ShadowTechniques:TimeTo(4) < 0.5 and not self.is_next_cp_animacharged then
 		Player.combo_points.effective = Player.combo_points.current
 	end
-	self.use_priority_rotation = Opt.priority_rotation and Player.enemies >= 2
+	self.priority_rotation = Opt.priority_rotation and Player.enemies >= 2
 	if Shadowmeld.known and Stealth:Usable() and Shadowmeld:Up() then
 		return Stealth
 	end
 	self:cds()
-	if SliceAndDice:Usable() and Player.enemies < 6 and (Target.timeToDie > 6 or Player.enemies > 1) and SliceAndDice:Remains() < 1 and Player.combo_points.current >= (Player:TimeInCombat() < 10 and 2 or 4) then
-		return SliceAndDice
-	end
 	if Player.stealthed then
 		return self:stealthed()
 	end
@@ -2468,26 +2456,22 @@ end
 
 APL[SPEC.SUBTLETY].cds = function(self)
 --[[
-# Use Dance off-gcd before the first Shuriken Storm from Tornado comes in.
-actions.cds=shadow_dance,use_off_gcd=1,if=!buff.shadow_dance.up&buff.shuriken_tornado.up&buff.shuriken_tornado.remains<=3.5
-# (Unless already up because we took Shadow Focus) use Symbols off-gcd before the first Shuriken Storm from Tornado comes in.
+actions.cds=variable,name=rotten_condition,value=!buff.premeditation.up&spell_targets.shuriken_storm=1|!talent.the_rotten|spell_targets.shuriken_storm>1
+actions.cds+=/shadow_dance,use_off_gcd=1,if=!buff.shadow_dance.up&buff.shuriken_tornado.up&buff.shuriken_tornado.remains<=3.5
 actions.cds+=/symbols_of_death,use_off_gcd=1,if=buff.shuriken_tornado.up&buff.shuriken_tornado.remains<=3.5
-actions.cds+=/flagellation,target_if=max:target.time_to_die,if=variable.snd_condition&!stealthed.mantle&(spell_targets.shuriken_storm<=1&cooldown.symbols_of_death.up&!talent.shadow_focus.enabled|buff.symbols_of_death.up)&combo_points>=5&target.time_to_die>10
-# Pool for Tornado pre-SoD with ShD ready when not running SF.
+actions.cds+=/vanish,if=buff.danse_macabre.stack>3&combo_points<=2&(cooldown.secret_technique.remains>=30|!talent.secret_technique)
+actions.cds+=/cold_blood,if=!talent.secret_technique&combo_points>=5
+actions.cds+=/flagellation,target_if=max:target.time_to_die,if=variable.snd_condition&combo_points>=5&target.time_to_die>10
 actions.cds+=/pool_resource,for_next=1,if=talent.shuriken_tornado.enabled&!talent.shadow_focus.enabled
-# Use Tornado pre SoD when we have the energy whether from pooling without SF or just generally.
-actions.cds+=/shuriken_tornado,if=spell_targets.shuriken_storm<=1&energy>=60&variable.snd_condition&cooldown.symbols_of_death.up&cooldown.shadow_dance.charges>=1&combo_points<=2&!buff.premeditation.up&(!covenant.venthyr|!cooldown.flagellation.up)
+actions.cds+=/shuriken_tornado,if=spell_targets.shuriken_storm<=1&energy>=60&variable.snd_condition&cooldown.symbols_of_death.up&cooldown.shadow_dance.charges>=1&(!talent.flagellation.enabled&!cooldown.flagellation.up|buff.flagellation_buff.up|spell_targets.shuriken_storm>=5)&combo_points<=2&!buff.premeditation.up
 actions.cds+=/sepsis,if=variable.snd_condition&combo_points.deficit>=1&target.time_to_die>=16
-# Use Symbols on cooldown (after first SnD) unless we are going to pop Tornado and do not have Shadow Focus.
-actions.cds+=/symbols_of_death,if=variable.snd_condition&(!stealthed.all|buff.perforated_veins.stack<4|spell_targets.shuriken_storm>4&!variable.use_priority_rotation)&(!talent.shuriken_tornado.enabled|talent.shadow_focus.enabled|spell_targets.shuriken_storm>=2|cooldown.shuriken_tornado.remains>2)&(!covenant.venthyr|cooldown.flagellation.remains>10|cooldown.flagellation.up&combo_points>=5)
-# If adds are up, snipe the one with lowest TTD. Use when dying faster than CP deficit or not stealthed without any CP.
+actions.cds+=/symbols_of_death,if=(buff.symbols_of_death.remains<=3&!cooldown.shadow_dance.ready|!set_bonus.tier30_2pc)&variable.rotten_condition&variable.snd_condition&(!talent.flagellation&(combo_points<=1|!talent.the_rotten)|cooldown.flagellation.remains>10|cooldown.flagellation.up&combo_points>=5)
 actions.cds+=/marked_for_death,line_cd=1.5,target_if=min:target.time_to_die,if=raid_event.adds.up&(target.time_to_die<combo_points.deficit|!stealthed.all&combo_points.deficit>=cp_max_spend)
-# If no adds will die within the next 30s, use MfD on boss without any CP.
 actions.cds+=/marked_for_death,if=raid_event.adds.in>30-raid_event.adds.duration&combo_points.deficit>=cp_max_spend
-actions.cds+=/shadow_blades,if=variable.snd_condition&combo_points.deficit>=2&(buff.symbols_of_death.up|fight_remains<=20)
-actions.cds+=/echoing_reprimand,if=variable.snd_condition&combo_points.deficit>=2&(!talent.shadow_focus.enabled|!stealthed.all|spell_targets.shuriken_storm>=4)&(variable.use_priority_rotation|spell_targets.shuriken_storm<=4|talent.resounding_clarity)
-# With SF, if not already done, use Tornado with SoD up.
-actions.cds+=/shuriken_tornado,if=(talent.shadow_focus.enabled|spell_targets.shuriken_storm>=2)&variable.snd_condition&buff.symbols_of_death.up&combo_points<=2&(!buff.premeditation.up|spell_targets.shuriken_storm>4)
+actions.cds+=/shadow_blades,if=variable.snd_condition&combo_points.deficit>=2&target.time_to_die>=10&(dot.sepsis.ticking|cooldown.sepsis.remains<=8|!talent.sepsis)|fight_remains<=20
+actions.cds+=/echoing_reprimand,if=variable.snd_condition&combo_points.deficit>=3&(variable.priority_rotation|spell_targets.shuriken_storm<=4|talent.resounding_clarity)&(buff.shadow_dance.up|!talent.danse_macabre)
+actions.cds+=/shuriken_tornado,if=variable.snd_condition&buff.symbols_of_death.up&combo_points<=2&(!buff.premeditation.up|spell_targets.shuriken_storm>4)
+actions.cds+=/shuriken_tornado,if=cooldown.shadow_dance.ready&!stealthed.all&spell_targets.shuriken_storm>=3&!talent.flagellation.enabled
 actions.cds+=/shadow_dance,if=!buff.shadow_dance.up&fight_remains<=8+talent.subterfuge.enabled
 actions.cds+=/thistle_tea,if=(cooldown.symbols_of_death.remains>=3|buff.symbols_of_death.up)&!buff.thistle_tea.up&(energy.deficit>=100&(combo_points.deficit>=2|spell_targets.shuriken_storm>=3)|cooldown.thistle_tea.charges_fractional>=2.75&buff.shadow_dance.up)|buff.shadow_dance.remains>=4&!buff.thistle_tea.up&spell_targets.shuriken_storm>=3|!buff.thistle_tea.up&fight_remains<=(6*cooldown.thistle_tea.charges)
 actions.cds+=/potion,if=buff.bloodlust.react|fight_remains<30|buff.symbols_of_death.up&(buff.shadow_blades.up|cooldown.shadow_blades.remains<=10)
@@ -2495,23 +2479,29 @@ actions.cds+=/blood_fury,if=buff.symbols_of_death.up
 actions.cds+=/berserking,if=buff.symbols_of_death.up
 actions.cds+=/fireblood,if=buff.symbols_of_death.up
 actions.cds+=/ancestral_call,if=buff.symbols_of_death.up
-actions.cds+=/use_item,name=cache_of_acquired_treasures,if=(covenant.venthyr&buff.acquired_axe.up|!covenant.venthyr&buff.acquired_wand.up)&(spell_targets.shuriken_storm=1&raid_event.adds.in>60|fight_remains<25|variable.use_priority_rotation)|buff.acquired_axe.up&spell_targets.shuriken_storm>1
-actions.cds+=/use_item,name=scars_of_fraternal_strife,if=!buff.scars_of_fraternal_strife_4.up|fight_remains<30
-# Default fallback for usable items: Use with Symbols of Death.
-actions.cds+=/use_items,if=buff.symbols_of_death.up|fight_remains<20
+actions.cds+=/use_item,name=beacon_to_the_beyond,use_off_gcd=1,if=!stealthed.all&(buff.deeper_daggers.up|!talent.deeper_daggers)&(!raid_event.adds.up|!equipped.stormeaters_boon|trinket.stormeaters_boon.cooldown.remains>20)
+actions.cds+=/use_item,name=manic_grieftorch,use_off_gcd=1,if=!stealthed.all&(!raid_event.adds.up|!equipped.stormeaters_boon|trinket.stormeaters_boon.cooldown.remains>20)
+actions.cds+=/use_items,if=!stealthed.all|fight_remains<10
 ]]
+	self.rotten_condition = not TheRotten.known or Player.enemies > 1 or Premeditation:Down()
 	if ShurikenTornado.known and ShurikenTornado:Up() and ShurikenTornado:Remains() <= 3.5 then
-		if ShadowDance:Usable() then
+		if ShadowDance:Usable() and ShadowDance:Down() then
 			return UseCooldown(ShadowDance)
 		end
-		if SymbolsOfDeath:Usable() and SymbolsOfDeath:Refreshable() then
+		if SymbolsOfDeath:Usable() and SymbolsOfDeath:Remains() < 1 and (Player.set_bonus.t30 < 2 or not ShadowDance:Ready(5)) then
 			return UseCooldown(SymbolsOfDeath)
 		end
 	end
-	if Flagellation:Usable() and self.snd_condition and (SymbolsOfDeath:Up() or (Player.enemies <= 1 and not ShadowFocus.known and SymbolsOfDeath:Ready())) and Player.combo_points.current >= 5 and Target.timeToDie > 10 then
+	if DanseMacabre.known and Vanish:Usable() and DanseMacabre:Stack() > 3 and Player.combo_points.current <= 2 and (not SecretTechnique.known or not SecretTechnique:Ready(30)) then
+		return UseCooldown(Vanish)
+	end
+	if ColdBlood:Usable() and not SecretTechnique.known and Player.combo_points.current >= 5 then
+		return UseCooldown(ColdBlood)
+	end
+	if Flagellation:Usable() and self.snd_condition and Player.combo_points.current >= 5 and Target.timeToDie > 10 then
 		return UseCooldown(Flagellation)
 	end
-	if ShurikenTornado:Usable(0, true) and Player.enemies <= 1 and self.snd_condition and not (Stealth:Up() or Vanish:Up() or Shadowmeld:Up()) and SymbolsOfDeath:Ready() and ShadowDance:Charges() >= 1 and Player.combo_points.current <= 2 and Premeditation:Down() and (not Flagellation.known or not Flagellation:Ready()) then
+	if ShurikenTornado:Usable(0, true) and Player.enemies <= 1 and self.snd_condition and not (Stealth:Up() or Vanish:Up() or Shadowmeld:Up()) and SymbolsOfDeath:Ready() and ShadowDance:Charges() >= 1 and Player.combo_points.current <= 2 and Premeditation:Down() and (Player.enemies >= 5 or not Flagellation.known or not Flagellation:Ready() or Flagellation.buff:Up()) then
 		if not ShadowFocus.known then
 			Player.pool_energy = 60
 			return UseCooldown(ShurikenTornado)
@@ -2523,7 +2513,7 @@ actions.cds+=/use_items,if=buff.symbols_of_death.up|fight_remains<20
 	if Sepsis:Usable() and self.snd_condition and Player.combo_points.deficit >= 1 and Target.timeToDie >= 16 then
 		return UseCooldown(Sepsis)
 	end
-	if SymbolsOfDeath:Usable() and self.snd_condition and SymbolsOfDeath:Refreshable() and not ShadowDance:Ready(5) and (not Player.stealthed or (PerforatedVeins.known and PerforatedVeins:Stack() < 4) or (Player.enemies > 4 and not self.use_priority_rotation)) and (not ShurikenTornado.known or ShadowFocus.known or Player.enemies >= 2 or ShurikenTornado:Cooldown() > 2) and (not Flagellation.known or Flagellation:Cooldown() > 10 or (Flagellation:Ready() and Player.combo_points.current >= 5)) then
+	if SymbolsOfDeath:Usable() and self.rotten_condition and self.snd_condition and (Player.set_bonus.t30 < 2 or (SymbolsOfDeath:Remains() <= 3 and not ShadowDance:Ready(SymbolsOfDeath:Remains() + 5))) and ((not Flagellation.known and (Player.combo_points.current <= 1 or not TheRotten.known)) or (Flagellation.known and (not Flagellation:Ready(10) or (Flagellation:Ready() and Player.combo_points.current >= 5)))) then
 		return UseCooldown(SymbolsOfDeath)
 	end
 	if MarkedForDeath:Usable() and (
@@ -2532,28 +2522,29 @@ actions.cds+=/use_items,if=buff.symbols_of_death.up|fight_remains<20
 	) then
 		return UseCooldown(MarkedForDeath)
 	end
-	if self.snd_condition then
-		if ShadowBlades:Usable() and ShadowBlades:Down() and Player.combo_points.deficit >= 2 and (SymbolsOfDeath:Ready(1) or SymbolsOfDeath:Up() or (Target.boss and Target.timeToDie < 20)) then
-			return UseCooldown(ShadowBlades)
-		end
-		if EchoingReprimand:Usable() and EchoingReprimand:Down() and Player.combo_points.deficit >= 2 and (not ShadowFocus.known or not Player.stealthed or Player.enemies >= 4) and (self.use_priority_rotation or Player.enemies <= 4 or ResoundingClarity.known) then
-			return UseCooldown(EchoingReprimand)
-		end
-		if ShurikenTornado:Usable() and (ShadowFocus.known or Player.enemies >= 2) and SymbolsOfDeath:Up() and Player.combo_points.current <= 2 and (Premeditation:Down() or Player.enemies > 4) then
-			return UseCooldown(ShurikenTornado)
-		end
+	if ShadowBlades:Usable() and ShadowBlades:Down() and ((self.snd_condition and Player.combo_points.deficit >= 2 and (Target.timeToDie >= 10 or Player.enemies > 1) and (not Sepsis.known or Sepsis:Ready(8) or Sepsis:Up())) or (Target.boss and Target.timeToDie < 20)) then
+		return UseCooldown(ShadowBlades)
+	end
+	if EchoingReprimand:Usable() and EchoingReprimand:Down() and self.snd_condition and Player.combo_points.deficit >= 3 and (self.priority_rotation or Player.enemies <= 4 or ResoundingClarity.known) and (not DanseMacabre.known or ShadowDance:Up()) then
+		return UseCooldown(EchoingReprimand)
+	end
+	if ShurikenTornado:Usable() and (
+		(self.snd_condition and SymbolsOfDeath:Up() and Player.combo_points.current <= 2 and (Premeditation:Down() or Player.enemies > 4)) or
+		(not Flagellation.known and ShadowDance:Ready() and not Player:Stealthed() and Player.enemies >= 3)
+	) then
+		return UseCooldown(ShurikenTornado)
 	end
 	if ShadowDance:Usable() and Target.boss and Target.timeToDie <= (8 + (Subterfuge.known and 1 or 0)) then
 		return UseCooldown(ShadowDance)
 	end
 	if ThistleTea:Usable() and ThistleTea:Down() and (
-		((SymbolsOfDeath:Up() or not SymbolsOfDeath:Ready(3)) and (Player.energy.deficit >= 100 and (Player.combo_points.deficit <= 2 or Player.enemies >= 3) or ThistleTea:ChargesFractional() >= 2.75 and ShadowDance:Up())) or
+		((SymbolsOfDeath:Up() or not SymbolsOfDeath:Ready(3)) and (Player.energy.deficit >= 100 and (Player.combo_points.deficit >= 2 or Player.enemies >= 3) or ThistleTea:ChargesFractional() >= 2.75 and ShadowDance:Up())) or
 		(ShadowDance:Remains() >= 4 and Player.enemies >= 3) or
 		(Target.boss and Target.timeToDie < (6 * ThistleTea:Charges()))
 	) then
-		return UseCooldown(ThistleTea)
+		UseExtra(ThistleTea)
 	end
-	if Opt.trinket then
+	if Opt.trinket and not (Stealth:Up() or Vanish:Up() or Shadowmeld:Up()) then
 		if (Target.boss and Target.timeToDie < 20) or SymbolsOfDeath:Remains() > 6 then
 			if Trinket1:Usable() then
 				return UseCooldown(Trinket1)
@@ -2566,47 +2557,38 @@ end
 
 APL[SPEC.SUBTLETY].stealth_cds = function(self)
 --[[
-# Helper Variable
-actions.stealth_cds=variable,name=shd_threshold,value=cooldown.shadow_dance.charges_fractional>=1.75
-actions.stealth_cds+=/variable,name=shd_threshold,if=talent.the_rotten,value=cooldown.shadow_dance.charges_fractional>=1.75|cooldown.symbols_of_death.remains>=16
-# Vanish if we are capping on Dance charges. Early before first dance if we have no Nightstalker but Dark Shadow in order to get Rupture up (no Master Assassin).
+actions.stealth_cds=variable,name=shd_threshold,value=cooldown.shadow_dance.charges_fractional>=0.75+talent.shadow_dance
+actions.stealth_cds+=/variable,name=rotten_threshold,value=!buff.the_rotten.up|spell_targets.shuriken_storm>1|combo_points<=2&buff.the_rotten.up&!set_bonus.tier30_2pc
 actions.stealth_cds+=/vanish,if=(!talent.danse_macabre|spell_targets.shuriken_storm>=3)&!variable.shd_threshold&combo_points.deficit>1&(cooldown.flagellation.remains>=60|!talent.flagellation|fight_remains<=(30*cooldown.vanish.charges))
-# Pool for Shadowmeld + Shadowstrike unless we are about to cap on Dance charges. Only when Find Weakness is about to run out.
 actions.stealth_cds+=/pool_resource,for_next=1,extra_amount=40,if=race.night_elf
-actions.stealth_cds+=/shadowmeld,if=energy>=40&energy.deficit>=10&!variable.shd_threshold&combo_points.deficit>1&buff.perforated_veins.stack<6
-# CP thresholds for entering Shadow Dance
-actions.stealth_cds+=/variable,name=shd_combo_points,value=combo_points.deficit>=2+buff.shadow_blades.up
-actions.stealth_cds+=/variable,name=shd_combo_points,value=combo_points.deficit>=3,if=covenant.kyrian
-actions.stealth_cds+=/variable,name=shd_combo_points,value=combo_points.deficit<=1,if=variable.use_priority_rotation&spell_targets.shuriken_storm>=4
-actions.stealth_cds+=/variable,name=shd_combo_points,value=combo_points.deficit<=1,if=spell_targets.shuriken_storm=4
-# Dance during Symbols or above threshold.
-actions.stealth_cds+=/shadow_dance,if=(talent.the_rotten&cooldown.symbols_of_death.remains<=8|variable.shd_combo_points&(buff.symbols_of_death.remains>=1.2|variable.shd_threshold)|buff.chaos_bane.up|spell_targets.shuriken_storm>=4&cooldown.symbols_of_death.remains>10)&(buff.perforated_veins.stack<4|spell_targets.shuriken_storm>3)
-# Burn Dances charges if you play Dark Shadows/Alacrity or before the fight ends if SoD won't be ready in time.
-actions.stealth_cds+=/shadow_dance,if=variable.shd_combo_points&fight_remains<cooldown.symbols_of_death.remains|!talent.enveloping_shadows.enabled
+actions.stealth_cds+=/shadowmeld,if=energy>=40&energy.deficit>=10&!variable.shd_threshold&combo_points.deficit>4
+actions.stealth_cds+=/variable,name=shd_combo_points,value=combo_points<=1
+actions.stealth_cds+=/variable,name=shd_combo_points,value=combo_points.deficit<=1,if=spell_targets.shuriken_storm>(4-2*talent.shuriken_tornado.enabled)|variable.priority_rotation&spell_targets.shuriken_storm>=4
+actions.stealth_cds+=/variable,name=shd_combo_points,value=1,if=spell_targets.shuriken_storm=(4-talent.seal_fate)
+actions.stealth_cds+=/shadow_dance,if=(variable.shd_combo_points&(!talent.shadow_dance&buff.symbols_of_death.remains>=(2.2-talent.flagellation.enabled)|variable.shd_threshold)|talent.shadow_dance&cooldown.secret_technique.remains<=9&(spell_targets.shuriken_storm<=3|talent.danse_macabre)|buff.flagellation.up|buff.flagellation_persist.remains>=6|spell_targets.shuriken_storm>=4&cooldown.symbols_of_death.remains>10)&variable.rotten_threshold
+actions.stealth_cds+=/shadow_dance,if=variable.shd_combo_points&fight_remains<cooldown.symbols_of_death.remains|!talent.shadow_dance&dot.rupture.ticking&spell_targets.shuriken_storm<=4&variable.rotten_threshold
 ]]
-	if TheRotten.known then
-		self.shd_threshold = ShadowDance:ChargesFractional() >= 1.75 or not SymbolsOfDeath:Ready(16)
-	else
-		self.shd_threshold = ShadowDance:ChargesFractional() >= 1.75
-	end
-	if Vanish:Usable() and not self.shd_threshold and Player.combo_points.deficit > 1 and (not Flagellation.known or not Flagellation:Ready(60) or (Target.boss and Target.timeToDie < (30 * Vanish:Charges()))) then
+	self.shd_threshold = ShadowDance:ChargesFractional() >= (ShadowDance:MaxCharges() - 0.25)
+	self.rotten_threshold = TheRotten:Down() or Player.enemies > 1 or (Player.combo_points.current <= 2 and TheRotten:Up() and Player.set_bonus.t30 < 2)
+	if Vanish:Usable() and not self.shd_threshold and Player.combo_points.deficit > 1 and (not DanseMacabre.known or Player.enemies >= 3) and (not Flagellation.known or not Flagellation:Ready(60) or (Target.boss and Target.timeToDie < (30 * Vanish:Charges()))) then
 		return UseCooldown(Vanish)
 	end
-	if Shadowmeld:Usable() and not self.shd_threshold and Player.energy.deficit >= 10 and Player.combo_points.deficit > 1 and (not Flagellation.known or not Flagellation:Ready(60) or (Target.boss and Target.timeToDie < (30 * Vanish:Charges()))) then
+	if Shadowmeld:Usable() and not self.shd_threshold and Player.energy.deficit >= 10 and Player.combo_points.deficit > 4 then
 		Player.pool_energy = 80
 		return UseCooldown(Shadowmeld)
 	end
-	if Player.enemies == 4 or (self.use_priority_rotation and Player.enemies >= 4) then
+	self.shd_combo_points = Player.combo_points.current <= 1
+	if Player.enemies > (4 - (ShurikenTornado.known and 2 or 0)) or (self.priority_rotation and Player.enemies >= 4) then
 		self.shd_combo_points = Player.combo_points.deficit <= 1
-	elseif EchoingReprimand.known then
-		self.shd_combo_points = Player.combo_points.deficit >= 3
-	else
-		self.shd_combo_points = Player.combo_points.deficit >= (ShadowBlades:Up() and 3 or 2)
 	end
-	if ShadowDance:Usable() and (
-		not DeepeningShadows.known or
-		(self.shd_combo_points and Player.enemies == 1 and Target.timeToDie < SymbolsOfDeath:Cooldown()) or
-		((not PerforatedVeins.known or PerforatedVeins:Stack() < 4 or Player.enemies > 3) and ((TheRotten.known and SymbolsOfDeath:Ready(8)) or self.shd_combo_points))
+	if Player.enemies == (4 - (SealFate.known and 1 or 0)) then
+		self.shd_combo_points = true
+	end
+	if ShadowDance:Usable() and self.rotten_threshold and (
+		(self.shd_combo_points and (self.shd_threshold or (ShadowDance:MaxCharges() < 2 and SymbolsOfDeath:Remains() >= (2.2 - (Flagellation.known and 1 or 0))))) or
+		(SecretTechnique.known and ShadowDance:MaxCharges() >= 2 and SecretTechnique:Ready(9) and (Player.enemies <= 3 or DanseMacabre.known)) or
+		(Flagellation.known and (Flagellation.buff:Up() or Flagellation.persist:Remains() >= 6)) or
+		(Player.enemies >= 4 and not SymbolsOfDeath:Ready(10))
 	) then
 		return UseCooldown(ShadowDance)
 	end
@@ -2641,7 +2623,7 @@ actions.finish+=/eviscerate
 	self.use_rupture = Rupture:Refreshable() and Target.timeToDie >= (Rupture:Remains() + ((4 * Player.combo_points.effective) * Player.haste_factor))
 	self.skip_rupture = (ThistleTea:Up() and Player.enemies == 1) or (ShadowDance:Up() and (Player.enemies == 1 or (Player.enemies >= 2 and Rupture:Up())))
 	if self.use_rupture and Rupture:Usable(0, true) then
-		if (not Player.stealthed or Rupture:Down()) and (not self.skip_rupture or self.use_priority_rotation) then
+		if (not Player.stealthed or Rupture:Down()) and (not self.skip_rupture or self.priority_rotation) then
 			return Pool(Rupture)
 		end
 		if not self.skip_rupture and Player.enemies == 1 and Finality.Rupture:Up() and ShadowDance:Ready(12) and ShadowDance:ChargesFractional() <= 1 and (DarkBrew.known or DanseMacabre.known) then
@@ -2655,12 +2637,15 @@ actions.finish+=/eviscerate
 		return Pool(SecretTechnique)
 	end
 	if self.use_rupture and Rupture:Usable(0, true) and not self.skip_rupture and (
-		(not self.use_priority_rotation and Player.enemies >= 2) or
+		(not self.priority_rotation and Player.enemies >= 2) or
 		(Rupture:Remains() < (SymbolsOfDeath:Cooldown() + 10) and SymbolsOfDeath:Ready(5) and (Target.timeToDie - Rupture:Remains()) > (SymbolsOfDeath:Cooldown() + 5))
 	) then
 		return Pool(Rupture)
 	end
-	if BlackPowder:Usable(0, true) and not self.use_priority_rotation and Player.enemies >= 3 then
+	if BlackPowder:Usable(0, true) and (
+		(not self.priority_rotation and Player.enemies >= 3) or
+		(DanseMacabre.known and Player.enemies == 2 and not DanseMacabre:UsedFor(BlackPowder) and ShadowDance:Up())
+	) then
 		return Pool(BlackPowder)
 	end
 	if Eviscerate:Usable(0, true) then
@@ -2670,93 +2655,83 @@ end
 
 APL[SPEC.SUBTLETY].build = function(self)
 --[[
-actions.build=shiv,if=!talent.nightstalker.enabled&talent.tiny_toxic_blade&spell_targets.shuriken_storm<5
-actions.build+=/shuriken_storm,if=spell_targets>=2&(buff.perforated_veins.stack<=4|spell_targets.shuriken_storm>4&!variable.use_priority_rotation)
-actions.build+=/gloomblade
-# Backstab immediately unless the next CP is Animacharged and we won't cap energy waiting for it.
-actions.build+=/backstab,if=!covenant.kyrian|!(variable.is_next_cp_animacharged&(time_to_sht.3.plus<0.5|time_to_sht.4.plus<1)&energy<60)
+actions.build=shuriken_storm,if=spell_targets>=2+(talent.gloomblade&buff.lingering_shadow.remains>=6|buff.perforated_veins.up)
+actions.build+=/variable,name=anima_helper,value=!talent.echoing_reprimand.enabled|!(variable.is_next_cp_animacharged&(time_to_sht.3.plus<0.5|time_to_sht.4.plus<1)&energy<60)
+actions.build+=/gloomblade,if=variable.anima_helper
+actions.build+=/backstab,if=variable.anima_helper
 ]]
-	if TinyToxicBlade.known and Shiv:Usable() and not Nightstalker.known and Player.enemies < 5 then
-		return Shiv
-	end
-	if ShurikenStorm:Usable() and Player.enemies >= 2 and (not PerforatedVeins.known or PerforatedVeins:Stack() <= 4 or (Player.enemies > 4 and not self.use_priority_rotation)) then
+	if ShurikenStorm:Usable() and Player.enemies >= (2 + (((Gloomblade.known and LingeringShadow.known and LingeringShadow:Remains() >= 6) or (PerforatedVeins.known and PerforatedVeins:Up())) and 1 or 0)) then
 		return ShurikenStorm
 	end
-	if Gloomblade:Usable() then
+	self.anima_helper = not EchoingReprimand.known or not (self.is_next_cp_animacharged and (ShadowTechniques:TimeTo(3) < 0.5 or ShadowTechniques:TimeTo(4) < 1) and Player.energy.current < 60)
+	if Gloomblade:Usable() and self.anima_helper then
 		return Gloomblade
 	end
-	if Backstab:Usable() and (not EchoingReprimand.known or not (self.is_next_cp_animacharged and (ShadowTechniques:TimeTo(3) < 0.5 or ShadowTechniques:TimeTo(4) < 1) and Player.energy.current < 60)) then
+	if Backstab:Usable() and self.anima_helper then
 		return Backstab
 	end
 end
 
 APL[SPEC.SUBTLETY].stealthed = function(self)
 --[[
-# If Stealth/vanish are up, use Shadowstrike to benefit from the passive bonus and Find Weakness, even if we are at max CP
-actions.stealthed=shadowstrike,if=(buff.stealth.up|buff.vanish.up)&(spell_targets.shuriken_storm<4|variable.use_priority_rotation)
+actions.stealthed=shadowstrike,if=(buff.stealth.up|buff.vanish.up)&(spell_targets.shuriken_storm<4|variable.priority_rotation)
+actions.stealthed+=/variable,name=gloomblade_condition,value=buff.danse_macabre.stack<5&(combo_points.deficit=2|combo_points.deficit=3)&(buff.premeditation.up|effective_combo_points<7)&(spell_targets.shuriken_storm<=8|talent.lingering_shadow)
+actions.stealthed+=/shuriken_storm,if=variable.gloomblade_condition&buff.silent_storm.up&!debuff.find_weakness.remains&talent.improved_shuriken_storm.enabled|combo_points<=1&!used_for_danse&spell_targets.shuriken_storm=2&talent.danse_macabre
+actions.stealthed+=/gloomblade,if=variable.gloomblade_condition&(!used_for_danse|spell_targets.shuriken_storm!=2)|combo_points<=2&buff.the_rotten.up&spell_targets.shuriken_storm<=3
+actions.stealthed+=/backstab,if=variable.gloomblade_condition&talent.danse_macabre&buff.danse_macabre.stack<=2&spell_targets.shuriken_storm<=2
 actions.stealthed+=/call_action_list,name=finish,if=variable.effective_combo_points>=cp_max_spend
-# Finish at 3+ CP without DS / 4+ with DS with Shuriken Tornado buff up to avoid some CP waste situations.
 actions.stealthed+=/call_action_list,name=finish,if=buff.shuriken_tornado.up&combo_points.deficit<=2
-# Also safe to finish at 4+ CP with exactly 4 targets. (Same as outside stealth.)
-actions.stealthed+=/call_action_list,name=finish,if=spell_targets.shuriken_storm>=4&variable.effective_combo_points>=4
-# Finish at 4+ CP without DS, 5+ with DS, and 6 with DS after Vanish
-actions.stealthed+=/call_action_list,name=finish,if=combo_points.deficit<=1-(talent.deeper_stratagem.enabled&buff.vanish.up)
+actions.stealthed+=/call_action_list,name=finish,if=spell_targets.shuriken_storm>=4-talent.seal_fate&variable.effective_combo_points>=4
+actions.stealthed+=/call_action_list,name=finish,if=combo_points.deficit<=1+(talent.seal_fate|talent.deeper_stratagem|talent.secret_stratagem)
+actions.stealthed+=/gloomblade,if=buff.perforated_veins.stack>=5&spell_targets.shuriken_storm<3
+actions.stealthed+=/backstab,if=buff.perforated_veins.stack>=5&spell_targets.shuriken_storm<3
 actions.stealthed+=/shadowstrike,if=stealthed.sepsis&spell_targets.shuriken_storm<4
-# Backstab during Shadow Dance when on high PV stacks and Shadow Blades is up.
-actions.stealthed+=/backstab,if=conduit.perforated_veins.rank>=8&buff.perforated_veins.stack>=5&buff.shadow_dance.remains>=3&buff.shadow_blades.up&(spell_targets.shuriken_storm<=3|variable.use_priority_rotation)&(buff.shadow_blades.remains<=buff.shadow_dance.remains+2|!covenant.venthyr)
-actions.stealthed+=/shiv,if=talent.nightstalker.enabled&talent.tiny_toxic_blade&spell_targets.shuriken_storm<5
-# Up to 3 targets (no prio) keep up Find Weakness by cycling Shadowstrike.
-actions.stealthed+=/shadowstrike,cycle_targets=1,if=!variable.use_priority_rotation&debuff.find_weakness.remains<1&spell_targets.shuriken_storm<=3&target.time_to_die-remains>6
-# For priority rotation, use Shadowstrike over Storm with WM against up to 4 targets or if FW is running off (on any amount of targets)
-actions.stealthed+=/shadowstrike,if=variable.use_priority_rotation&(debuff.find_weakness.remains<1|talent.weaponmaster.enabled&spell_targets.shuriken_storm<=4)
-actions.stealthed+=/shuriken_storm,if=spell_targets>=3+buff.the_rotten.up&(!buff.premeditation.up|spell_targets>=5)
-# Shadowstrike to refresh Find Weakness and to ensure we can carry over a full FW into the next SoD if possible.
+actions.stealthed+=/shuriken_storm,if=spell_targets>=3+buff.the_rotten.up&(!buff.premeditation.up|spell_targets>=7&!variable.priority_rotation)
 actions.stealthed+=/shadowstrike,if=debuff.find_weakness.remains<=1|cooldown.symbols_of_death.remains<18&debuff.find_weakness.remains<cooldown.symbols_of_death.remains
-actions.stealthed+=/gloomblade,if=buff.perforated_veins.stack>=5&conduit.perforated_veins.rank>=13
 actions.stealthed+=/shadowstrike
-actions.stealthed+=/cheap_shot,if=!target.is_boss&combo_points.deficit>=1&buff.shot_in_the_dark.up&energy.time_to_40>gcd.max
 ]]
-	if Shadowstrike:Usable() and (Stealth:Up() or Vanish:Up()) and (Player.enemies < 4 or self.use_priority_rotation) then
+	if Shadowstrike:Usable() and (Stealth:Up() or Vanish:Up()) and (Player.enemies < 4 or self.priority_rotation) then
 		return Shadowstrike
+	end
+	self.gloomblade_condition = (not DanseMacabre.known or DanseMacabre:Stack() < 5) and between(Player.combo_points.deficit, 2, 3) and (Premeditation:Up() or Player.combo_points.effective < 7) and (Player.enemies <= 8 or LingeringShadow.known)
+	if ShurikenStorm:Usable() and (
+		(self.gloomblade_condition and ImprovedShurikenStorm.known and SilentStorm:Up() and FindWeakness:Down()) or
+		(DanseMacabre.known and Player.combo_points.current <= 1 and Player.enemies == 2 and not DanseMacabre:UsedFor(ShurikenStorm))
+	) then
+		return ShurikenStorm
+	end
+	if Gloomblade:Usable() and (
+		(self.gloomblade_condition and (Player.enemies ~= 2 or (DanseMacabre.known and not DanseMacabre:UsedFor(Gloomblade)))) or
+		(TheRotten.known and Player.combo_points.current <= 2 and Player.enemies <= 3 and TheRotten:Up())
+	) then
+		return Gloomblade
+	end
+	if Backstab:Usable() and self.gloomblade_condition and DanseMacabre.known and Player.enemies <= 2 and not DanseMacabre:UsedFor(Backstab) and DanseMacabre:Stack() <= 2 then
+		return Backstab
 	end
 	if (
 		Player.combo_points.effective >= Player.combo_points.max_spend or
 		(ShurikenTornado.known and ShurikenTornado:Up() and Player.combo_points.deficit <= 2) or
-		(Player.enemies >= 4 and Player.combo_points.effective >= 4) or
-		(Player.combo_points.deficit <= (1 - (DeeperStratagem.known and Vanish:Up() and 1 or 0)))
+		(Player.combo_points.effective >= 4 and Player.enemies >= (4 - (SealFate.known and 1 or 0))) or
+		(Player.combo_points.deficit <= (1 + ((SealFate.known or DeeperStratagem.known or SecretStratagem.known) and 1 or 0)))
 	) then
 		local apl = self:finish()
 		if apl then return apl end
 	end
+	if PerforatedVeins.known and Gloomblade:Usable() and Player.enemies < 3  and PerforatedVeins:Stack() >= 5 then
+		return Gloomblade
+	end
+	if PerforatedVeins.known and Backstab:Usable() and Player.enemies < 3  and PerforatedVeins:Stack() >= 5 then
+		return Backstab
+	end
 	if Sepsis.known and Shadowstrike:Usable() and Sepsis.buff:Up() and Player.enemies < 4 then
 		return Shadowstrike
 	end
-	if PerforatedVeins.rank >= 8 and Backstab:Usable() and PerforatedVeins:Stack() >= 5 and ShadowDance:Remains() >= 3 and ShadowBlades:Up() and (Player.enemies <= 3 or self.use_priority_rotation) and (not Flagellation.known or ShadowBlades:Remains() <= (ShadowDance:Remains() + 2)) then
-		return Backstab
-	end
-	if TinyToxicBlade.known and Shiv:Usable() and Nightstalker.known and Player.enemies < 5 then
-		return Shiv
-	end
-	if Shadowstrike:Usable() and (
-		(not self.use_priority_rotation and FindWeakness:Remains() < 1 and Player.enemies >= 3 and Target.timeToDie > FindWeakness:Remains() + 6) or
-		(self.use_priority_rotation and (FindWeakness:Remains() < 1 or Weaponmaster.known and Player.enemies <= 4))
-	) then
-		return Shadowstrike
-	end
-	if ShurikenStorm:Usable() and Player.enemies >= (3 + ((TheRotten.known and TheRotten:Up()) and 1 or 0)) and (Premeditation:Down() or Player.enemies >= 5) then
+	if ShurikenStorm:Usable() and Player.enemies >= (3 + ((TheRotten.known and TheRotten:Up()) and 1 or 0)) and (Premeditation:Down() or (Player.enemies >= 7 and not self.priority_rotation)) then
 		return ShurikenStorm
-	end
-	if Shadowstrike:Usable() and (FindWeakness:Remains() < 1 or (SymbolsOfDeath:Ready(18) and FindWeakness:Remains() < SymbolsOfDeath:Cooldown())) then
-		return Shadowstrike
-	end
-	if PerforatedVeins.rank >= 13 and Gloomblade:Usable() and PerforatedVeins:Stack() >= 5 then
-		return Gloomblade
 	end
 	if Shadowstrike:Usable() then
 		return Shadowstrike
-	end
-	if ShotInTheDark.known and CheapShot:Usable() and not Target.boss and Target.stunnable and Player.combo_points.deficit >= 1 and ShotInTheDark:Up() and Player:EnergyTimeToMax(40) > 1 then
-		return CheapShot
 	end
 end
 
@@ -2769,6 +2744,9 @@ APL.Interrupt = function(self)
 	end
 	if Gouge:Usable() then
 		return Gouge
+	end
+	if KidneyShot:Usable() then
+		return KidneyShot
 	end
 end
 
@@ -3227,6 +3205,7 @@ CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellS
 	end
 	if dstGUID == Player.guid then
 		if event == 'SPELL_AURA_APPLIED' or event == 'SPELL_AURA_REFRESH' then
+			ability.last_gained = Player.time
 			if RollTheBones.known and RollTheBones.buffs[ability] then
 				ability.trigger = RollTheBones.next_trigger
 			end
