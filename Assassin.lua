@@ -236,6 +236,7 @@ local Player = {
 	main_freecast = false,
 	poison = {},
 	stealth_time = 0,
+	danse_stacks = 0,
 }
 
 -- current target information
@@ -1634,6 +1635,8 @@ function Player:Update()
 		AutoAoe:Purge()
 	end
 
+	Player.danse_stacks = DanseMacabre.known and DanseMacabre:Stack() or 0
+
 	self.main = APL[self.spec]:Main()
 end
 
@@ -2492,7 +2495,7 @@ actions.cds+=/use_items,if=!stealthed.all|fight_remains<10
 			return UseCooldown(SymbolsOfDeath)
 		end
 	end
-	if DanseMacabre.known and Vanish:Usable() and DanseMacabre:Stack() > 3 and Player.combo_points.current <= 2 and (not SecretTechnique.known or not SecretTechnique:Ready(30)) then
+	if DanseMacabre.known and Vanish:Usable() and Player.danse_stacks > 3 and Player.combo_points.current <= 2 and (not SecretTechnique.known or not SecretTechnique:Ready(30)) then
 		return UseCooldown(Vanish)
 	end
 	if ColdBlood:Usable() and not SecretTechnique.known and Player.combo_points.current >= 5 then
@@ -2610,7 +2613,7 @@ actions.finish+=/rupture,if=!variable.skip_rupture&remains<cooldown.symbols_of_d
 actions.finish+=/black_powder,if=!variable.priority_rotation&spell_targets>=3|!used_for_danse&buff.shadow_dance.up&spell_targets.shuriken_storm=2&talent.danse_macabre
 actions.finish+=/eviscerate
 ]]
-	self.secret_condition = ShadowDance:Up() and (not DanseMacabre.known or DanseMacabre:Stack() >= 3) and (Premeditation:Down() or Player.enemies ~= 2)
+	self.secret_condition = ShadowDance:Up() and (not DanseMacabre.known or Player.danse_stacks >= 3) and (Premeditation:Down() or Player.enemies ~= 2)
 	self.premed_snd_condition = Premeditation.known and Player.enemies < 5
 	if SliceAndDice:Usable() and not Player.combo_points.anima_charged[Player.combo_points.current] then
 		if not self.premed_snd_condition and Player.enemies < 6 and SliceAndDice:Refreshable() and ShadowDance:Down() and SliceAndDice:Remains() < Target.timeToDie then
@@ -2693,7 +2696,7 @@ actions.stealthed+=/shadowstrike
 	if Shadowstrike:Usable() and (Stealth:Up() or Vanish:Up()) and (Player.enemies < 4 or self.priority_rotation) then
 		return Shadowstrike
 	end
-	self.gloomblade_condition = (not DanseMacabre.known or DanseMacabre:Stack() < 5) and between(Player.combo_points.deficit, 2, 3) and (Premeditation:Up() or Player.combo_points.effective < 7) and (Player.enemies <= 8 or LingeringShadow.known)
+	self.gloomblade_condition = (not DanseMacabre.known or Player.danse_stacks < 5) and between(Player.combo_points.deficit, 2, 3) and (Premeditation:Up() or Player.combo_points.effective < 7) and (Player.enemies <= 8 or LingeringShadow.known)
 	if ShurikenStorm:Usable() and (
 		(self.gloomblade_condition and ImprovedShurikenStorm.known and SilentStorm:Up() and FindWeakness:Down()) or
 		(DanseMacabre.known and Player.combo_points.current <= 1 and Player.enemies == 2 and not DanseMacabre:UsedFor(ShurikenStorm))
@@ -2706,7 +2709,7 @@ actions.stealthed+=/shadowstrike
 	) then
 		return Gloomblade
 	end
-	if Backstab:Usable() and self.gloomblade_condition and DanseMacabre.known and Player.enemies <= 2 and not DanseMacabre:UsedFor(Backstab) and DanseMacabre:Stack() <= 2 then
+	if Backstab:Usable() and self.gloomblade_condition and DanseMacabre.known and Player.enemies <= 2 and not DanseMacabre:UsedFor(Backstab) and Player.danse_stacks <= 2 then
 		return Backstab
 	end
 	if (
@@ -2983,7 +2986,7 @@ end
 
 function UI:UpdateDisplay()
 	Timer.display = 0
-	local dim, dim_cd, text_center, text_cd
+	local dim, dim_cd, text_center, text_cd, text_tr
 
 	if Opt.dimmer then
 		dim = not ((not Player.main) or
@@ -3017,6 +3020,9 @@ function UI:UpdateDisplay()
 			dim = Opt.dimmer
 		end
 	end
+	if Player.danse_stacks > 0 then
+		text_tr = Player.danse_stacks
+	end
 	if border ~= assassinPanel.border.overlay then
 		assassinPanel.border.overlay = border
 		assassinPanel.border:SetTexture(ADDON_PATH .. (border or 'border') .. '.blp')
@@ -3024,6 +3030,7 @@ function UI:UpdateDisplay()
 
 	assassinPanel.dimmer:SetShown(dim)
 	assassinPanel.text.center:SetText(text_center)
+	assassinPanel.text.tr:SetText(text_tr)
 	--assassinPanel.text.bl:SetText(format('%.1fs', Target.timeToDie))
 	assassinCooldownPanel.text:SetText(text_cd)
 	assassinCooldownPanel.dimmer:SetShown(dim_cd)
