@@ -122,11 +122,14 @@ local UI = {
 local CombatEvent = {}
 
 -- automatically registered events container
-local events = {}
+local Events = {}
 
+-- player ability template
 local Ability = {}
 Ability.__index = Ability
-local abilities = {
+
+-- classified player abilities
+local Abilities = {
 	all = {},
 	bySpellId = {},
 	velocity = {},
@@ -134,14 +137,15 @@ local abilities = {
 	trackAuras = {},
 }
 
-local autoAoe = {
+-- methods for target tracking / aoe modes
+local AutoAoe = {
 	targets = {},
 	blacklist = {},
-	ignored_units = {
-	},
+	ignored_units = {},
 }
 
-local timer = {
+-- timers for updating combat/display/hp info
+local Timer = {
 	combat = 0,
 	display = 0,
 	health = 0,
@@ -155,6 +159,7 @@ local SPEC = {
 	SUBTLETY = 3,
 }
 
+-- action priority list container
 local APL = {
 	[SPEC.NONE] = {},
 	[SPEC.ASSASSINATION] = {},
@@ -442,7 +447,7 @@ end
 
 -- Start Auto AoE
 
-function autoAoe:Add(guid, update)
+function AutoAoe:Add(guid, update)
 	if self.blacklist[guid] then
 		return
 	end
@@ -458,7 +463,7 @@ function autoAoe:Add(guid, update)
 	end
 end
 
-function autoAoe:Remove(guid)
+function AutoAoe:Remove(guid)
 	-- blacklist enemies for 2 seconds when they die to prevent out of order events from re-adding them
 	self.blacklist[guid] = Player.time + 2
 	if self.targets[guid] then
@@ -467,8 +472,8 @@ function autoAoe:Remove(guid)
 	end
 end
 
-function autoAoe:Clear()
-	for _, ability in next, abilities.autoAoe do
+function AutoAoe:Clear()
+	for _, ability in next, Abilities.autoAoe do
 		ability.auto_aoe.start_time = nil
 		for guid in next, ability.auto_aoe.targets do
 			ability.auto_aoe.targets[guid] = nil
@@ -480,7 +485,7 @@ function autoAoe:Clear()
 	self:Update()
 end
 
-function autoAoe:Update()
+function AutoAoe:Update()
 	local count = 0
 	for i in next, self.targets do
 		count = count + 1
@@ -499,7 +504,7 @@ function autoAoe:Update()
 	end
 end
 
-function autoAoe:Purge()
+function AutoAoe:Purge()
 	local update
 	for guid, t in next, self.targets do
 		if Player.time - t > Opt.auto_aoe_ttl then
@@ -549,7 +554,7 @@ function Ability:Add(spellId, buff, player, spellId2)
 		aura_filter = (buff and 'HELPFUL' or 'HARMFUL') .. (player and '|PLAYER' or '')
 	}
 	setmetatable(ability, self)
-	abilities.all[#abilities.all + 1] = ability
+	Abilities.all[#Abilities.all + 1] = ability
 	return ability
 end
 
@@ -816,16 +821,16 @@ function Ability:UpdateTargetsHit()
 		self.auto_aoe.start_time = nil
 		self.auto_aoe.target_count = 0
 		if self.auto_aoe.remove then
-			for guid in next, autoAoe.targets do
-				autoAoe.targets[guid] = nil
+			for guid in next, AutoAoe.targets do
+				AutoAoe.targets[guid] = nil
 			end
 		end
 		for guid in next, self.auto_aoe.targets do
-			autoAoe:Add(guid)
+			AutoAoe:Add(guid)
 			self.auto_aoe.targets[guid] = nil
 			self.auto_aoe.target_count = self.auto_aoe.target_count + 1
 		end
-		autoAoe:Update()
+		AutoAoe:Update()
 	end
 end
 
@@ -847,7 +852,7 @@ function Ability:CastSuccess(dstGUID)
 		self:RemoveAura(self.aura_target == 'player' and Player.guid or dstGUID)
 	end
 	if Opt.auto_aoe and self.auto_aoe and self.auto_aoe.trigger == 'SPELL_CAST_SUCCESS' then
-		autoAoe:Add(dstGUID, true)
+		AutoAoe:Add(dstGUID, true)
 	end
 	if self.traveling and self.next_castGUID then
 		self.traveling[self.next_castGUID] = {
@@ -896,7 +901,7 @@ end
 local trackAuras = {}
 
 function trackAuras:Purge()
-	for _, ability in next, abilities.trackAuras do
+	for _, ability in next, Abilities.trackAuras do
 		for guid, aura in next, ability.aura_targets do
 			if aura.expires <= Player.time then
 				ability:RemoveAura(guid)
@@ -906,7 +911,7 @@ function trackAuras:Purge()
 end
 
 function trackAuras:Remove(guid)
-	for _, ability in next, abilities.trackAuras do
+	for _, ability in next, Abilities.trackAuras do
 		ability:RemoveAura(guid)
 	end
 end
@@ -916,7 +921,7 @@ function Ability:TrackAuras()
 end
 
 function Ability:ApplyAura(guid)
-	if autoAoe.blacklist[guid] then
+	if AutoAoe.blacklist[guid] then
 		return
 	end
 	local aura = {}
@@ -926,7 +931,7 @@ function Ability:ApplyAura(guid)
 end
 
 function Ability:RefreshAura(guid)
-	if autoAoe.blacklist[guid] then
+	if AutoAoe.blacklist[guid] then
 		return
 	end
 	local aura = self.aura_targets[guid]
@@ -1484,10 +1489,10 @@ function Player:UpdatePoisons()
 		end
 	end
 	if Opt.last_poison.lethal then
-		self.poison.lethal = abilities.bySpellId[Opt.last_poison.lethal]
+		self.poison.lethal = Abilities.bySpellId[Opt.last_poison.lethal]
 	end
 	if Opt.last_poison.nonlethal then
-		self.poison.nonlethal = abilities.bySpellId[Opt.last_poison.nonlethal]
+		self.poison.nonlethal = Abilities.bySpellId[Opt.last_poison.nonlethal]
 	end
 end
 
@@ -1496,7 +1501,7 @@ function Player:UpdateAbilities()
 
 	local node
 	local configId = C_ClassTalents.GetActiveConfigID()
-	for _, ability in next, abilities.all do
+	for _, ability in next, Abilities.all do
 		ability.known = false
 		ability.rank = 0
 		for _, spellId in next, ability.spellIds do
@@ -1538,24 +1543,24 @@ function Player:UpdateAbilities()
 	end
 	ShadowTechniques.auto_count = 0
 
-	wipe(abilities.bySpellId)
-	wipe(abilities.velocity)
-	wipe(abilities.autoAoe)
-	wipe(abilities.trackAuras)
-	for _, ability in next, abilities.all do
+	wipe(Abilities.bySpellId)
+	wipe(Abilities.velocity)
+	wipe(Abilities.autoAoe)
+	wipe(Abilities.trackAuras)
+	for _, ability in next, Abilities.all do
 		if ability.known then
-			abilities.bySpellId[ability.spellId] = ability
+			Abilities.bySpellId[ability.spellId] = ability
 			if ability.spellId2 then
-				abilities.bySpellId[ability.spellId2] = ability
+				Abilities.bySpellId[ability.spellId2] = ability
 			end
 			if ability.velocity > 0 then
-				abilities.velocity[#abilities.velocity + 1] = ability
+				Abilities.velocity[#Abilities.velocity + 1] = ability
 			end
 			if ability.auto_aoe then
-				abilities.autoAoe[#abilities.autoAoe + 1] = ability
+				Abilities.autoAoe[#Abilities.autoAoe + 1] = ability
 			end
 			if ability.aura_targets then
-				abilities.trackAuras[#abilities.trackAuras + 1] = ability
+				Abilities.trackAuras[#Abilities.trackAuras + 1] = ability
 			end
 		end
 	end
@@ -1591,7 +1596,7 @@ function Player:Update()
 	self.gcd_remains = start > 0 and duration - (self.ctime - start) or 0
 	_, _, _, start, ends, _, _, _, spellId = UnitCastingInfo('player')
 	if spellId then
-		self.cast.ability = abilities.bySpellId[spellId]
+		self.cast.ability = Abilities.bySpellId[spellId]
 		self.cast.start = start / 1000
 		self.cast.ends = ends / 1000
 	else
@@ -1620,10 +1625,10 @@ function Player:Update()
 
 	trackAuras:Purge()
 	if Opt.auto_aoe then
-		for _, ability in next, abilities.autoAoe do
+		for _, ability in next, Abilities.autoAoe do
 			ability:UpdateTargetsHit()
 		end
-		autoAoe:Purge()
+		AutoAoe:Purge()
 	end
 
 	self.main = APL[self.spec]:Main()
@@ -1641,8 +1646,8 @@ function Player:Init()
 	self.name = UnitName('player')
 	self.level = UnitLevel('player')
 	_, self.instance = IsInInstance()
-	events:GROUP_ROSTER_UPDATE()
-	events:PLAYER_SPECIALIZATION_CHANGED('player')
+	Events:GROUP_ROSTER_UPDATE()
+	Events:PLAYER_SPECIALIZATION_CHANGED('player')
 end
 
 -- End Player API
@@ -1650,7 +1655,7 @@ end
 -- Start Target API
 
 function Target:UpdateHealth(reset)
-	timer.health = 0
+	Timer.health = 0
 	self.health.current = UnitHealth('target')
 	self.health.max = UnitHealthMax('target')
 	if self.health.current <= 0 then
@@ -2499,7 +2504,7 @@ actions.cds+=/use_items,if=buff.symbols_of_death.up|fight_remains<20
 		if ShadowDance:Usable() then
 			return UseCooldown(ShadowDance)
 		end
-		if SymbolsOfDeath:Usable() then
+		if SymbolsOfDeath:Usable() and SymbolsOfDeath:Refreshable() then
 			return UseCooldown(SymbolsOfDeath)
 		end
 	end
@@ -2518,7 +2523,7 @@ actions.cds+=/use_items,if=buff.symbols_of_death.up|fight_remains<20
 	if Sepsis:Usable() and self.snd_condition and Player.combo_points.deficit >= 1 and Target.timeToDie >= 16 then
 		return UseCooldown(Sepsis)
 	end
-	if SymbolsOfDeath:Usable() and self.snd_condition and (not Player.stealthed or (PerforatedVeins.known and PerforatedVeins:Stack() < 4) or (Player.enemies > 4 and not self.use_priority_rotation)) and (not ShurikenTornado.known or ShadowFocus.known or Player.enemies >= 2 or ShurikenTornado:Cooldown() > 2) and (not Flagellation.known or Flagellation:Cooldown() > 10 or (Flagellation:Ready() and Player.combo_points.current >= 5)) then
+	if SymbolsOfDeath:Usable() and self.snd_condition and SymbolsOfDeath:Refreshable() and not ShadowDance:Ready(5) and (not Player.stealthed or (PerforatedVeins.known and PerforatedVeins:Stack() < 4) or (Player.enemies > 4 and not self.use_priority_rotation)) and (not ShurikenTornado.known or ShadowFocus.known or Player.enemies >= 2 or ShurikenTornado:Cooldown() > 2) and (not Flagellation.known or Flagellation:Cooldown() > 10 or (Flagellation:Ready() and Player.combo_points.current >= 5)) then
 		return UseCooldown(SymbolsOfDeath)
 	end
 	if MarkedForDeath:Usable() and (
@@ -2565,7 +2570,7 @@ APL[SPEC.SUBTLETY].stealth_cds = function(self)
 actions.stealth_cds=variable,name=shd_threshold,value=cooldown.shadow_dance.charges_fractional>=1.75
 actions.stealth_cds+=/variable,name=shd_threshold,if=talent.the_rotten,value=cooldown.shadow_dance.charges_fractional>=1.75|cooldown.symbols_of_death.remains>=16
 # Vanish if we are capping on Dance charges. Early before first dance if we have no Nightstalker but Dark Shadow in order to get Rupture up (no Master Assassin).
-actions.stealth_cds+=/vanish,if=(!variable.shd_threshold|!talent.nightstalker.enabled&talent.dark_shadow.enabled)&combo_points.deficit>1&buff.perforated_veins.stack<6
+actions.stealth_cds+=/vanish,if=(!talent.danse_macabre|spell_targets.shuriken_storm>=3)&!variable.shd_threshold&combo_points.deficit>1&(cooldown.flagellation.remains>=60|!talent.flagellation|fight_remains<=(30*cooldown.vanish.charges))
 # Pool for Shadowmeld + Shadowstrike unless we are about to cap on Dance charges. Only when Find Weakness is about to run out.
 actions.stealth_cds+=/pool_resource,for_next=1,extra_amount=40,if=race.night_elf
 actions.stealth_cds+=/shadowmeld,if=energy>=40&energy.deficit>=10&!variable.shd_threshold&combo_points.deficit>1&buff.perforated_veins.stack<6
@@ -2584,10 +2589,10 @@ actions.stealth_cds+=/shadow_dance,if=variable.shd_combo_points&fight_remains<co
 	else
 		self.shd_threshold = ShadowDance:ChargesFractional() >= 1.75
 	end
-	if Vanish:Usable() and (not self.shd_threshold or not Nightstalker.known and DarkShadow.known) and Player.combo_points.deficit > 1 and (not PerforatedVeins.known or PerforatedVeins:Stack() < 6) then
+	if Vanish:Usable() and not self.shd_threshold and Player.combo_points.deficit > 1 and (not Flagellation.known or not Flagellation:Ready(60) or (Target.boss and Target.timeToDie < (30 * Vanish:Charges()))) then
 		return UseCooldown(Vanish)
 	end
-	if Shadowmeld:Usable() and not self.shd_threshold and Player.energy.deficit >= 10 and Player.combo_points.deficit > 1 and (not PerforatedVeins.known or PerforatedVeins:Stack() < 6) then
+	if Shadowmeld:Usable() and not self.shd_threshold and Player.energy.deficit >= 10 and Player.combo_points.deficit > 1 and (not Flagellation.known or not Flagellation:Ready(60) or (Target.boss and Target.timeToDie < (30 * Vanish:Charges()))) then
 		Player.pool_energy = 80
 		return UseCooldown(Shadowmeld)
 	end
@@ -2601,7 +2606,7 @@ actions.stealth_cds+=/shadow_dance,if=variable.shd_combo_points&fight_remains<co
 	if ShadowDance:Usable() and (
 		not DeepeningShadows.known or
 		(self.shd_combo_points and Player.enemies == 1 and Target.timeToDie < SymbolsOfDeath:Cooldown()) or
-		((not PerforatedVeins.known or PerforatedVeins:Stack() < 4 or Player.enemies > 3) and ((TheRotten.known and SymbolsOfDeath:Ready(8)) or (self.shd_combo_points and (SymbolsOfDeath:Remains() >= 1.2 or self.shd_threshold)) or (Player.enemies >= 4 and not SymbolsOfDeath:Ready(10))))
+		((not PerforatedVeins.known or PerforatedVeins:Stack() < 4 or Player.enemies > 3) and ((TheRotten.known and SymbolsOfDeath:Ready(8)) or self.shd_combo_points))
 	) then
 		return UseCooldown(ShadowDance)
 	end
@@ -2999,7 +3004,7 @@ function UI:Disappear()
 end
 
 function UI:UpdateDisplay()
-	timer.display = 0
+	Timer.display = 0
 	local dim, dim_cd, text_center, text_cd
 
 	if Opt.dimmer then
@@ -3047,7 +3052,7 @@ function UI:UpdateDisplay()
 end
 
 function UI:UpdateCombat()
-	timer.combat = 0
+	Timer.combat = 0
 
 	Player:Update()
 
@@ -3098,8 +3103,8 @@ function UI:UpdateCombat()
 end
 
 function UI:UpdateCombatWithin(seconds)
-	if Opt.frequency - timer.combat > seconds then
-		timer.combat = max(seconds, Opt.frequency - seconds)
+	if Opt.frequency - Timer.combat > seconds then
+		Timer.combat = max(seconds, Opt.frequency - seconds)
 	end
 end
 
@@ -3107,7 +3112,7 @@ end
 
 -- Start Event Handling
 
-function events:ADDON_LOADED(name)
+function Events:ADDON_LOADED(name)
 	if name == ADDON then
 		Opt = Assassin
 		local firstRun = not Opt.frequency
@@ -3158,7 +3163,7 @@ end
 CombatEvent.UNIT_DIED = function(event, srcGUID, dstGUID)
 	trackAuras:Remove(dstGUID)
 	if Opt.auto_aoe then
-		autoAoe:Remove(dstGUID)
+		AutoAoe:Remove(dstGUID)
 	end
 end
 
@@ -3166,12 +3171,12 @@ CombatEvent.SWING_DAMAGE = function(event, srcGUID, dstGUID, amount, overkill, s
 	if srcGUID == Player.guid then
 		Player:ResetSwing(not offHand, offHand)
 		if Opt.auto_aoe then
-			autoAoe:Add(dstGUID, true)
+			AutoAoe:Add(dstGUID, true)
 		end
 	elseif dstGUID == Player.guid then
 		Player.swing.last_taken = Player.time
 		if Opt.auto_aoe then
-			autoAoe:Add(srcGUID, true)
+			AutoAoe:Add(srcGUID, true)
 		end
 	end
 end
@@ -3180,12 +3185,12 @@ CombatEvent.SWING_MISSED = function(event, srcGUID, dstGUID, missType, offHand, 
 	if srcGUID == Player.guid then
 		Player:ResetSwing(not offHand, offHand, true)
 		if Opt.auto_aoe and not (missType == 'EVADE' or missType == 'IMMUNE') then
-			autoAoe:Add(dstGUID, true)
+			AutoAoe:Add(dstGUID, true)
 		end
 	elseif dstGUID == Player.guid then
 		Player.swing.last_taken = Player.time
 		if Opt.auto_aoe then
-			autoAoe:Add(srcGUID, true)
+			AutoAoe:Add(srcGUID, true)
 		end
 	end
 end
@@ -3195,7 +3200,7 @@ CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellS
 		return
 	end
 
-	local ability = spellId and abilities.bySpellId[spellId]
+	local ability = spellId and Abilities.bySpellId[spellId]
 	if not ability then
 		--print(format('EVENT %s TRACK CHECK FOR UNKNOWN %s ID %d', event, type(spellName) == 'string' and spellName or 'Unknown', spellId or 0))
 		return
@@ -3230,7 +3235,7 @@ CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellS
 	end
 	if Opt.auto_aoe then
 		if event == 'SPELL_MISSED' and (missType == 'EVADE' or (missType == 'IMMUNE' and not ability.ignore_immune)) then
-			autoAoe:Remove(dstGUID)
+			AutoAoe:Remove(dstGUID)
 		elseif ability.auto_aoe and (event == ability.auto_aoe.trigger or ability.auto_aoe.trigger == 'SPELL_AURA_APPLIED' and event == 'SPELL_AURA_REFRESH') then
 			ability:RecordTargetHit(dstGUID)
 		end
@@ -3240,27 +3245,27 @@ CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellS
 	end
 end
 
-function events:COMBAT_LOG_EVENT_UNFILTERED()
+function Events:COMBAT_LOG_EVENT_UNFILTERED()
 	CombatEvent.TRIGGER(CombatLogGetCurrentEventInfo())
 end
 
-function events:PLAYER_TARGET_CHANGED()
+function Events:PLAYER_TARGET_CHANGED()
 	Target:Update()
 end
 
-function events:UNIT_FACTION(unitId)
+function Events:UNIT_FACTION(unitId)
 	if unitId == 'target' then
 		Target:Update()
 	end
 end
 
-function events:UNIT_FLAGS(unitId)
+function Events:UNIT_FLAGS(unitId)
 	if unitId == 'target' then
 		Target:Update()
 	end
 end
 
-function events:UNIT_HEALTH(unitId)
+function Events:UNIT_HEALTH(unitId)
 	if unitId == 'player' then
 		Player.health.current = UnitHealth('player')
 		Player.health.max = UnitHealthMax('player')
@@ -3268,7 +3273,7 @@ function events:UNIT_HEALTH(unitId)
 	end
 end
 
-function events:UNIT_POWER_UPDATE(unitId, powerType)
+function Events:UNIT_POWER_UPDATE(unitId, powerType)
 	if unitId == 'player' and powerType == 'COMBO_POINTS' then
 		Player.combo_points.current = UnitPower(unitId, 4)
 		Player.combo_points.deficit = Player.combo_points.max - Player.combo_points.current
@@ -3276,25 +3281,25 @@ function events:UNIT_POWER_UPDATE(unitId, powerType)
 	end
 end
 
-function events:UNIT_SPELLCAST_START(unitId, castGUID, spellId)
+function Events:UNIT_SPELLCAST_START(unitId, castGUID, spellId)
 	if Opt.interrupt and unitId == 'target' then
 		UI:UpdateCombatWithin(0.05)
 	end
 end
 
-function events:UNIT_SPELLCAST_STOP(unitId, castGUID, spellId)
+function Events:UNIT_SPELLCAST_STOP(unitId, castGUID, spellId)
 	if Opt.interrupt and unitId == 'target' then
 		UI:UpdateCombatWithin(0.05)
 	end
 end
-events.UNIT_SPELLCAST_FAILED = events.UNIT_SPELLCAST_STOP
-events.UNIT_SPELLCAST_INTERRUPTED = events.UNIT_SPELLCAST_STOP
+Events.UNIT_SPELLCAST_FAILED = Events.UNIT_SPELLCAST_STOP
+Events.UNIT_SPELLCAST_INTERRUPTED = Events.UNIT_SPELLCAST_STOP
 
-function events:UNIT_SPELLCAST_SENT(unitId, destName, castGUID, spellId)
+function Events:UNIT_SPELLCAST_SENT(unitId, destName, castGUID, spellId)
 	if unitId ~= 'player' or not spellId or castGUID:sub(6, 6) ~= '3' then
 		return
 	end
-	local ability = abilities.bySpellId[spellId]
+	local ability = Abilities.bySpellId[spellId]
 	if not ability then
 		return
 	end
@@ -3306,11 +3311,11 @@ function events:UNIT_SPELLCAST_SENT(unitId, destName, castGUID, spellId)
 	end
 end
 
-function events:UNIT_SPELLCAST_SUCCEEDED(unitId, castGUID, spellId)
+function Events:UNIT_SPELLCAST_SUCCEEDED(unitId, castGUID, spellId)
 	if unitId ~= 'player' or not spellId or castGUID:sub(6, 6) ~= '3' then
 		return
 	end
-	local ability = abilities.bySpellId[spellId]
+	local ability = Abilities.bySpellId[spellId]
 	if not ability then
 		return
 	end
@@ -3330,12 +3335,12 @@ function events:UNIT_SPELLCAST_SUCCEEDED(unitId, castGUID, spellId)
 	end
 end
 
-function events:PLAYER_REGEN_DISABLED()
+function Events:PLAYER_REGEN_DISABLED()
 	Player:UpdateTime()
 	Player.combat_start = Player.time
 end
 
-function events:PLAYER_REGEN_ENABLED()
+function Events:PLAYER_REGEN_ENABLED()
 	Player:UpdateTime()
 	Player.combat_start = 0
 	Player.swing.last_taken = 0
@@ -3345,17 +3350,17 @@ function events:PLAYER_REGEN_ENABLED()
 		Player.last_ability = nil
 		assassinPreviousPanel:Hide()
 	end
-	for _, ability in next, abilities.velocity do
+	for _, ability in next, Abilities.velocity do
 		for guid in next, ability.traveling do
 			ability.traveling[guid] = nil
 		end
 	end
 	if Opt.auto_aoe and (Player.time - Player.stealth_time) > 3 then
-		autoAoe:Clear()
+		AutoAoe:Clear()
 	end
 end
 
-function events:PLAYER_EQUIPMENT_CHANGED()
+function Events:PLAYER_EQUIPMENT_CHANGED()
 	local _, equipType, hasCooldown
 	Trinket1.itemId = GetInventoryItemID('player', 13) or 0
 	Trinket2.itemId = GetInventoryItemID('player', 14) or 0
@@ -3390,27 +3395,27 @@ function events:PLAYER_EQUIPMENT_CHANGED()
 	Player:UpdateAbilities()
 end
 
-function events:PLAYER_SPECIALIZATION_CHANGED(unitId)
+function Events:PLAYER_SPECIALIZATION_CHANGED(unitId)
 	if unitId ~= 'player' then
 		return
 	end
 	Player.spec = GetSpecialization() or 0
 	assassinPreviousPanel.ability = nil
 	Player:SetTargetMode(1)
-	events:PLAYER_EQUIPMENT_CHANGED()
-	events:PLAYER_REGEN_ENABLED()
-	events:UNIT_HEALTH('player')
+	Events:PLAYER_EQUIPMENT_CHANGED()
+	Events:PLAYER_REGEN_ENABLED()
+	Events:UNIT_HEALTH('player')
 	UI.OnResourceFrameShow()
 	Target:Update()
 	Player:Update()
 end
 
 
-function events:TRAIT_CONFIG_UPDATED()
-	events:PLAYER_SPECIALIZATION_CHANGED('player')
+function Events:TRAIT_CONFIG_UPDATED()
+	Events:PLAYER_SPECIALIZATION_CHANGED('player')
 end
 
-function events:SPELL_UPDATE_COOLDOWN()
+function Events:SPELL_UPDATE_COOLDOWN()
 	if Opt.spell_swipe then
 		local _, start, duration, castStart, castEnd
 		_, _, _, castStart, castEnd = UnitCastingInfo('player')
@@ -3424,22 +3429,22 @@ function events:SPELL_UPDATE_COOLDOWN()
 	end
 end
 
-function events:PLAYER_PVP_TALENT_UPDATE()
+function Events:PLAYER_PVP_TALENT_UPDATE()
 	Player:UpdateAbilities()
 end
 
-function events:ACTIONBAR_SLOT_CHANGED()
+function Events:ACTIONBAR_SLOT_CHANGED()
 	UI:UpdateGlows()
 end
 
-function events:GROUP_ROSTER_UPDATE()
+function Events:GROUP_ROSTER_UPDATE()
 	Player.group_size = max(1, min(40, GetNumGroupMembers()))
 end
 
-function events:PLAYER_ENTERING_WORLD()
+function Events:PLAYER_ENTERING_WORLD()
 	Player:Init()
 	Target:Update()
-	C_Timer.After(5, function() events:PLAYER_EQUIPMENT_CHANGED() end)
+	C_Timer.After(5, function() Events:PLAYER_EQUIPMENT_CHANGED() end)
 end
 
 assassinPanel.button:SetScript('OnClick', function(self, button, down)
@@ -3455,22 +3460,22 @@ assassinPanel.button:SetScript('OnClick', function(self, button, down)
 end)
 
 assassinPanel:SetScript('OnUpdate', function(self, elapsed)
-	timer.combat = timer.combat + elapsed
-	timer.display = timer.display + elapsed
-	timer.health = timer.health + elapsed
-	if timer.combat >= Opt.frequency then
+	Timer.combat = Timer.combat + elapsed
+	Timer.display = Timer.display + elapsed
+	Timer.health = Timer.health + elapsed
+	if Timer.combat >= Opt.frequency then
 		UI:UpdateCombat()
 	end
-	if timer.display >= 0.05 then
+	if Timer.display >= 0.05 then
 		UI:UpdateDisplay()
 	end
-	if timer.health >= 0.2 then
+	if Timer.health >= 0.2 then
 		Target:UpdateHealth()
 	end
 end)
 
-assassinPanel:SetScript('OnEvent', function(self, event, ...) events[event](self, ...) end)
-for event in next, events do
+assassinPanel:SetScript('OnEvent', function(self, event, ...) Events[event](self, ...) end)
+for event in next, Events do
 	assassinPanel:RegisterEvent(event)
 end
 
@@ -3696,17 +3701,17 @@ SlashCmdList[ADDON] = function(msg, editbox)
 		if msg[2] then
 			if startsWith(msg[2], 'a') then
 				Opt.hide.assassination = not Opt.hide.assassination
-				events:PLAYER_SPECIALIZATION_CHANGED('player')
+				Events:PLAYER_SPECIALIZATION_CHANGED('player')
 				return Status('Assassination specialization', not Opt.hide.assassination)
 			end
 			if startsWith(msg[2], 'o') then
 				Opt.hide.outlaw = not Opt.hide.outlaw
-				events:PLAYER_SPECIALIZATION_CHANGED('player')
+				Events:PLAYER_SPECIALIZATION_CHANGED('player')
 				return Status('Outlaw specialization', not Opt.hide.outlaw)
 			end
 			if startsWith(msg[2], 's') then
 				Opt.hide.subtlety = not Opt.hide.subtlety
-				events:PLAYER_SPECIALIZATION_CHANGED('player')
+				Events:PLAYER_SPECIALIZATION_CHANGED('player')
 				return Status('Subtlety specialization', not Opt.hide.subtlety)
 			end
 		end
