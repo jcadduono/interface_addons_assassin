@@ -2435,7 +2435,7 @@ actions+=/bag_of_tricks
 		return self:stealthed()
 	end
 	self.stealth_threshold = 25 + (Vigor.known and 20 or 0) + (MasterOfShadows.known and 20 or 0) + (ShadowFocus.known and 25 or 0) + (Alacrity.known and 20 or 0) + (Player.enemies >= 4 and 25 or 0)
-	if Player.energy.deficit <= self.stealth_threshold then
+	if not Player.cd and Player.energy.deficit <= self.stealth_threshold then
 		self:stealth_cds()
 	end
 	local apl
@@ -2495,7 +2495,7 @@ actions.cds+=/use_items,if=!stealthed.all|fight_remains<10
 			return UseCooldown(SymbolsOfDeath)
 		end
 	end
-	if DanseMacabre.known and Vanish:Usable() and Player.danse_stacks > 3 and Player.combo_points.current <= 2 and (not SecretTechnique.known or not SecretTechnique:Ready(30)) then
+	if Vanish:Usable() and Player.danse_stacks > 3 and Player.combo_points.current <= 2 and (not SecretTechnique.known or not SecretTechnique:Ready(30)) then
 		return UseCooldown(Vanish)
 	end
 	if ColdBlood:Usable() and not SecretTechnique.known and Player.combo_points.current >= 5 then
@@ -2516,7 +2516,7 @@ actions.cds+=/use_items,if=!stealthed.all|fight_remains<10
 	if Sepsis:Usable() and self.snd_condition and Player.combo_points.deficit >= 1 and Target.timeToDie >= 16 then
 		return UseCooldown(Sepsis)
 	end
-	if SymbolsOfDeath:Usable() and self.rotten_condition and self.snd_condition and (Player.set_bonus.t30 < 2 or (SymbolsOfDeath:Remains() <= 3 and not ShadowDance:Ready(SymbolsOfDeath:Remains() + 5))) and ((not Flagellation.known and (Player.combo_points.current <= 1 or not TheRotten.known)) or (Flagellation.known and (not Flagellation:Ready(10) or (Flagellation:Ready() and Player.combo_points.current >= 5)))) then
+	if SymbolsOfDeath:Usable() and self.rotten_condition and self.snd_condition and (Player.set_bonus.t30 < 2 or (SymbolsOfDeath:Remains() < 1 and not ShadowDance:Ready(SymbolsOfDeath:Remains() + 5))) and ((not Flagellation.known and (Player.combo_points.current <= 1 or not TheRotten.known)) or (Flagellation.known and (not Flagellation:Ready(10) or (Flagellation:Ready() and Player.combo_points.current >= 5)))) then
 		return UseCooldown(SymbolsOfDeath)
 	end
 	if MarkedForDeath:Usable() and (
@@ -2528,7 +2528,7 @@ actions.cds+=/use_items,if=!stealthed.all|fight_remains<10
 	if ShadowBlades:Usable() and ShadowBlades:Down() and ((self.snd_condition and Player.combo_points.deficit >= 2 and (Target.timeToDie >= 10 or Player.enemies > 1) and (not Sepsis.known or Sepsis:Ready(8) or Sepsis:Up())) or (Target.boss and Target.timeToDie < 20)) then
 		return UseCooldown(ShadowBlades)
 	end
-	if EchoingReprimand:Usable() and EchoingReprimand:Down() and self.snd_condition and Player.combo_points.deficit >= 3 and (self.priority_rotation or Player.enemies <= 4 or ResoundingClarity.known) and (not DanseMacabre.known or ShadowDance:Up()) then
+	if EchoingReprimand:Usable() and EchoingReprimand:Down() and self.snd_condition and Player.combo_points.deficit >= 3 and (self.priority_rotation or Player.enemies <= 4 or ResoundingClarity.known) and (not DanseMacabre.known or (Player.danse_stacks >= 1 and not DanseMacabre:UsedFor(EchoingReprimand))) then
 		return UseCooldown(EchoingReprimand)
 	end
 	if ShurikenTornado:Usable() and (
@@ -2647,7 +2647,7 @@ actions.finish+=/eviscerate
 	end
 	if BlackPowder:Usable(0, true) and (
 		(not self.priority_rotation and Player.enemies >= 3) or
-		(DanseMacabre.known and Player.enemies == 2 and not DanseMacabre:UsedFor(BlackPowder) and ShadowDance:Up())
+		(Player.danse_stacks >= 1 and Player.enemies >= 2 and not DanseMacabre:UsedFor(BlackPowder))
 	) then
 		return Pool(BlackPowder)
 	end
@@ -2696,20 +2696,20 @@ actions.stealthed+=/shadowstrike
 	if Shadowstrike:Usable() and (Stealth:Up() or Vanish:Up()) and (Player.enemies < 4 or self.priority_rotation) then
 		return Shadowstrike
 	end
-	self.gloomblade_condition = (not DanseMacabre.known or Player.danse_stacks < 5) and between(Player.combo_points.deficit, 2, 3) and (Premeditation:Up() or Player.combo_points.effective < 7) and (Player.enemies <= 8 or LingeringShadow.known)
+	self.gloomblade_condition = Player.danse_stacks < 5 and between(Player.combo_points.deficit, 2, 3) and (Premeditation:Up() or Player.combo_points.effective < 7) and (Player.enemies <= 8 or LingeringShadow.known)
 	if ShurikenStorm:Usable() and (
 		(self.gloomblade_condition and ImprovedShurikenStorm.known and SilentStorm:Up() and FindWeakness:Down()) or
-		(DanseMacabre.known and Player.combo_points.current <= 1 and Player.enemies == 2 and not DanseMacabre:UsedFor(ShurikenStorm))
+		(Player.danse_stacks >= 1 and Player.combo_points.current <= 1 and Player.enemies >= 2 and not DanseMacabre:UsedFor(ShurikenStorm))
 	) then
 		return ShurikenStorm
 	end
 	if Gloomblade:Usable() and (
-		(self.gloomblade_condition and (Player.enemies ~= 2 or (DanseMacabre.known and not DanseMacabre:UsedFor(Gloomblade)))) or
+		(self.gloomblade_condition and (Player.enemies ~= 2 or (Player.danse_stacks >= 1 and not DanseMacabre:UsedFor(Gloomblade)))) or
 		(TheRotten.known and Player.combo_points.current <= 2 and Player.enemies <= 3 and TheRotten:Up())
 	) then
 		return Gloomblade
 	end
-	if Backstab:Usable() and self.gloomblade_condition and DanseMacabre.known and Player.enemies <= 2 and not DanseMacabre:UsedFor(Backstab) and Player.danse_stacks <= 2 then
+	if Backstab:Usable() and self.gloomblade_condition and between(Player.danse_stacks, 1, 2) and Player.enemies <= 2 and not DanseMacabre:UsedFor(Backstab) then
 		return Backstab
 	end
 	if (
@@ -2721,10 +2721,10 @@ actions.stealthed+=/shadowstrike
 		local apl = self:finish()
 		if apl then return apl end
 	end
-	if PerforatedVeins.known and Gloomblade:Usable() and Player.enemies < 3  and PerforatedVeins:Stack() >= 5 then
+	if PerforatedVeins.known and Gloomblade:Usable() and Player.enemies < 3 and PerforatedVeins:Stack() >= 5 then
 		return Gloomblade
 	end
-	if PerforatedVeins.known and Backstab:Usable() and Player.enemies < 3  and PerforatedVeins:Stack() >= 5 then
+	if PerforatedVeins.known and Backstab:Usable() and Player.enemies < 3 and PerforatedVeins:Stack() >= 5 then
 		return Backstab
 	end
 	if Sepsis.known and Shadowstrike:Usable() and Sepsis.buff:Up() and Player.enemies < 4 then
