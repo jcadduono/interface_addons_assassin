@@ -408,7 +408,9 @@ Player.target_modes = {
 		{2, '2'},
 		{3, '3'},
 		{4, '4'},
-		{5, '5+'},
+		{5, '5'},
+		{6, '6'},
+		{7, '7+'},
 	},
 }
 
@@ -1772,7 +1774,7 @@ Gouge.Usable = CheapShot.Usable
 KidneyShot.Usable = CheapShot.Usable
 
 function DanseMacabre:UsedFor(ability)
-	return ability.last_used > self.last_gained
+	return Player.danse_stacks >= 1 and ability.last_used >= self.last_gained
 end
 
 function Envenom:Duration()
@@ -2599,7 +2601,7 @@ end
 
 APL[SPEC.SUBTLETY].finish = function(self)
 --[[
-actions.finish=variable,name=secret_condition,value=buff.shadow_dance.up&(buff.danse_macabre.stack>=3|!talent.danse_macabre)&(!buff.premeditation.up|spell_targets.shuriken_storm!=2)
+actions.finish=variable,name=secret_condition,value=buff.shadow_dance.up&(!talent.danse_macabre|buff.danse_macabre.stack>=5|(buff.danse_macabre.stack>=3&(!buff.premeditation.up|spell_targets.shuriken_storm>2)))
 actions.finish+=/variable,name=premed_snd_condition,value=talent.premeditation.enabled&spell_targets.shuriken_storm<5
 actions.finish+=/slice_and_dice,if=!variable.premed_snd_condition&spell_targets.shuriken_storm<6&!buff.shadow_dance.up&buff.slice_and_dice.remains<fight_remains&refreshable
 actions.finish+=/slice_and_dice,if=variable.premed_snd_condition&cooldown.shadow_dance.charges_fractional<1.75&buff.slice_and_dice.remains<cooldown.symbols_of_death.remains&(cooldown.shadow_dance.ready&buff.symbols_of_death.remains-buff.shadow_dance.remains<1.2)
@@ -2613,7 +2615,7 @@ actions.finish+=/rupture,if=!variable.skip_rupture&remains<cooldown.symbols_of_d
 actions.finish+=/black_powder,if=!variable.priority_rotation&spell_targets>=3|!used_for_danse&buff.shadow_dance.up&spell_targets.shuriken_storm=2&talent.danse_macabre
 actions.finish+=/eviscerate
 ]]
-	self.secret_condition = ShadowDance:Up() and (not DanseMacabre.known or Player.danse_stacks >= 3) and (Premeditation:Down() or Player.enemies ~= 2)
+	self.secret_condition = ShadowDance:Up() and (not DanseMacabre.known or Player.danse_stacks >= 5 or (Player.danse_stacks >= 3 and (Premeditation:Down() or Player.enemies > 2)))
 	self.premed_snd_condition = Premeditation.known and Player.enemies < 5
 	if SliceAndDice:Usable() and not Player.combo_points.anima_charged[Player.combo_points.current] then
 		if not self.premed_snd_condition and Player.enemies < 6 and SliceAndDice:Refreshable() and ShadowDance:Down() and SliceAndDice:Remains() < Target.timeToDie then
@@ -2680,7 +2682,7 @@ APL[SPEC.SUBTLETY].stealthed = function(self)
 actions.stealthed=shadowstrike,if=(buff.stealth.up|buff.vanish.up)&(spell_targets.shuriken_storm<4|variable.priority_rotation)
 actions.stealthed+=/variable,name=gloomblade_condition,value=buff.danse_macabre.stack<5&(combo_points.deficit=2|combo_points.deficit=3)&(buff.premeditation.up|effective_combo_points<7)&(spell_targets.shuriken_storm<=8|talent.lingering_shadow)
 actions.stealthed+=/shuriken_storm,if=variable.gloomblade_condition&buff.silent_storm.up&!debuff.find_weakness.remains&talent.improved_shuriken_storm.enabled|combo_points<=1&!used_for_danse&spell_targets.shuriken_storm=2&talent.danse_macabre
-actions.stealthed+=/gloomblade,if=variable.gloomblade_condition&(!used_for_danse|spell_targets.shuriken_storm!=2)|combo_points<=2&buff.the_rotten.up&spell_targets.shuriken_storm<=3
+actions.stealthed+=/gloomblade,if=variable.gloomblade_condition&!used_for_danse|combo_points<=2&buff.the_rotten.up&spell_targets.shuriken_storm<=3
 actions.stealthed+=/backstab,if=variable.gloomblade_condition&talent.danse_macabre&buff.danse_macabre.stack<=2&spell_targets.shuriken_storm<=2
 actions.stealthed+=/call_action_list,name=finish,if=variable.effective_combo_points>=cp_max_spend
 actions.stealthed+=/call_action_list,name=finish,if=buff.shuriken_tornado.up&combo_points.deficit<=2
@@ -2704,7 +2706,7 @@ actions.stealthed+=/shadowstrike
 		return ShurikenStorm
 	end
 	if Gloomblade:Usable() and (
-		(self.gloomblade_condition and (Player.enemies ~= 2 or (Player.danse_stacks >= 1 and not DanseMacabre:UsedFor(Gloomblade)))) or
+		(self.gloomblade_condition and Player.danse_stacks >= 1 and not DanseMacabre:UsedFor(Gloomblade)) or
 		(TheRotten.known and Player.combo_points.current <= 2 and Player.enemies <= 3 and TheRotten:Up())
 	) then
 		return Gloomblade
