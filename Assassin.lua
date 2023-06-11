@@ -2504,7 +2504,7 @@ actions.cds+=/use_items,if=!stealthed.all|fight_remains<10
 	if Flagellation:Usable() and self.snd_condition and Player.combo_points.current >= 5 and Target.timeToDie > 10 then
 		return UseCooldown(Flagellation)
 	end
-	if ShurikenTornado:Usable(0, true) and Player.enemies <= 1 and self.snd_condition and not (Stealth:Up() or Vanish:Up() or Shadowmeld:Up()) and SymbolsOfDeath:Ready() and ShadowDance:Charges() >= 1 and Player.combo_points.current <= 2 and Premeditation:Down() and (Player.enemies >= 5 or not Flagellation.known or not Flagellation:Ready() or Flagellation.buff:Up()) then
+	if ShurikenTornado:Usable(0, true) and Player.enemies <= 1 and self.snd_condition and not (Stealth:Up() or Vanish:Up() or Shadowmeld:Up()) and (Player.set_bonus.t30 >= 2 or SymbolsOfDeath:Ready() or SymbolsOfDeath:Remains() > 4) and ShadowDance:Ready() and Player.combo_points.current <= 2 and Premeditation:Down() and (not Flagellation.known or not Flagellation:Ready() or Flagellation.buff:Up()) then
 		if not ShadowFocus.known then
 			Player.pool_energy = 60
 			return UseCooldown(ShurikenTornado)
