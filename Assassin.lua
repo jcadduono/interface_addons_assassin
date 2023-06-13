@@ -2613,16 +2613,17 @@ actions.finish+=/secret_technique,if=variable.secret_condition&(!talent.cold_blo
 actions.finish+=/rupture,cycle_targets=1,if=!variable.skip_rupture&!variable.priority_rotation&spell_targets.shuriken_storm>=2&target.time_to_die>=(2*combo_points)&refreshable
 actions.finish+=/rupture,if=!variable.skip_rupture&remains<cooldown.symbols_of_death.remains+10&cooldown.symbols_of_death.remains<=5&target.time_to_die-remains>cooldown.symbols_of_death.remains+5
 actions.finish+=/black_powder,if=!variable.priority_rotation&spell_targets>=3|!used_for_danse&buff.shadow_dance.up&spell_targets.shuriken_storm=2&talent.danse_macabre
+actions.finish+=/slice_and_dice,if=variable.premed_snd_condition&refreshable&buff.shadow_dance.down&buff.symbols_of_death.down&remains<cooldown.shadow_dance.remains&remains<cooldown.symbols_of_death.remains+8&fight_remains>remains+5
 actions.finish+=/eviscerate
 ]]
 	self.secret_condition = ShadowDance:Up() and (not DanseMacabre.known or Player.danse_stacks >= 5 or (Player.danse_stacks >= 3 and (Premeditation:Down() or Player.enemies > 2)))
 	self.premed_snd_condition = Premeditation.known and Player.enemies < 5
-	if SliceAndDice:Usable() and not Player.combo_points.anima_charged[Player.combo_points.current] then
+	if SliceAndDice:Usable(0, true) and not Player.combo_points.anima_charged[Player.combo_points.current] then
 		if not self.premed_snd_condition and Player.enemies < 6 and SliceAndDice:Refreshable() and ShadowDance:Down() and SliceAndDice:Remains() < Target.timeToDie then
-			return SliceAndDice
+			return Pool(SliceAndDice)
 		end
 		if self.premed_snd_condition and ShadowDance:ChargesFractional() < 1.75 and SliceAndDice:Remains() < SymbolsOfDeath:Cooldown() and ShadowDance:Ready() and (SymbolsOfDeath:Remains() - ShadowDance:Remains()) < 1.2 then
-			return SliceAndDice
+			return Pool(SliceAndDice)
 		end
 	end
 	self.use_rupture = Rupture:Refreshable() and Target.timeToDie >= (Rupture:Remains() + ((4 * Player.combo_points.effective) * Player.haste_factor))
@@ -2652,6 +2653,9 @@ actions.finish+=/eviscerate
 		(Player.danse_stacks >= 1 and Player.enemies >= 2 and not DanseMacabre:UsedFor(BlackPowder))
 	) then
 		return Pool(BlackPowder)
+	end
+	if SliceAndDice:Usable(0, true) and not Player.combo_points.anima_charged[Player.combo_points.current] and self.premed_snd_condition and SliceAndDice:Refreshable() and ShadowDance:Down() and SymbolsOfDeath:Down() and SliceAndDice:Remains() < ShadowDance:Cooldown() and SliceAndDice:Remains() < (SymbolsOfDeath:Cooldown() + 8) and (Player.enemies > 1 or Target.timeToDie > (SliceAndDice:Remains() + 5)) then
+		return Pool(SliceAndDice)
 	end
 	if Eviscerate:Usable(0, true) then
 		return Pool(Eviscerate)
