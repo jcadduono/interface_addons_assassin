@@ -1363,6 +1363,8 @@ end
 -- Equipment
 local Trinket1 = InventoryItem:Add(0)
 local Trinket2 = InventoryItem:Add(0)
+local DragonfireBombDispenser = InventoryItem:Add(202610)
+local ElementiumPocketAnvil = InventoryItem:Add(202617)
 -- End Inventory Items
 
 -- Start Player API
@@ -2550,6 +2552,12 @@ actions.cds+=/use_items,if=!stealthed.all|fight_remains<10
 		UseExtra(ThistleTea)
 	end
 	if Opt.trinket and not (Stealth:Up() or Vanish:Up() or Shadowmeld:Up()) then
+		if DragonfireBombDispenser:Usable() and (Player.enemies > 1 or Target.timeToDie > 8) then
+			return UseCooldown(DragonfireBombDispenser)
+		end
+		if ElementiumPocketAnvil:Usable() and Player.energy.deficit >= (15 + Player.energy.regen) and ShadowDance:Down() and ShurikenTornado:Down() then
+			return UseCooldown(ElementiumPocketAnvil)
+		end
 		if (Target.boss and Target.timeToDie < 20) or SymbolsOfDeath:Remains() > 6 then
 			if Trinket1:Usable() then
 				return UseCooldown(Trinket1)
