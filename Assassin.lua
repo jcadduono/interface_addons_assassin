@@ -1238,6 +1238,8 @@ local DarkBrew = Ability:Add(382504, false, true)
 local DarkShadow = Ability:Add(245687, false, true)
 DarkShadow.talent_node = 90732
 local DeepeningShadows = Ability:Add(185314, true, true)
+local DeeperDaggers = Ability:Add(382517, true, true, 383405)
+DeeperDaggers.buff_duration = 8
 local Finality = Ability:Add(382525, true, true)
 Finality.talent_node = 90720
 Finality.BlackPowder = Ability:Add(385948, true, true)
@@ -1363,8 +1365,10 @@ end
 -- Equipment
 local Trinket1 = InventoryItem:Add(0)
 local Trinket2 = InventoryItem:Add(0)
-local DragonfireBombDispenser = InventoryItem:Add(202610)
-local ElementiumPocketAnvil = InventoryItem:Add(202617)
+Trinket.BeaconToTheBeyond = InventoryItem:Add(203963)
+Trinket.BeaconToTheBeyond.cooldown_duration = 150
+Trinket.DragonfireBombDispenser = InventoryItem:Add(202610)
+Trinket.ElementiumPocketAnvil = InventoryItem:Add(202617)
 -- End Inventory Items
 
 -- Start Player API
@@ -2552,13 +2556,13 @@ actions.cds+=/use_items,if=!stealthed.all|fight_remains<10
 		UseExtra(ThistleTea)
 	end
 	if Opt.trinket and not (Stealth:Up() or Vanish:Up() or Shadowmeld:Up()) then
-		if DragonfireBombDispenser:Usable() and (Player.enemies > 1 or Target.timeToDie > 8) then
-			return UseCooldown(DragonfireBombDispenser)
-		end
-		if ElementiumPocketAnvil:Usable() and Player.energy.deficit >= (15 + Player.energy.regen) and ShadowDance:Down() and ShurikenTornado:Down() then
-			return UseCooldown(ElementiumPocketAnvil)
-		end
-		if (Target.boss and Target.timeToDie < 20) or SymbolsOfDeath:Remains() > 6 then
+		if Trinket.BeaconToTheBeyond:Usable() and ShadowDance:Down() and (not DeeperDaggers.known or DeeperDaggers:Up()) then
+			return UseCooldown(Trinket.BeaconToTheBeyond)
+		elseif Trinket.DragonfireBombDispenser:Usable() and (Player.enemies > 1 or Target.timeToDie > 8) then
+			return UseCooldown(Trinket.DragonfireBombDispenser)
+		elseif Trinket.ElementiumPocketAnvil:Usable() and Player.energy.deficit >= (15 + Player.energy.regen) and ShadowDance:Down() and ShurikenTornado:Down() then
+			return UseCooldown(Trinket.ElementiumPocketAnvil)
+		elseif (Target.boss and Target.timeToDie < 20) or SymbolsOfDeath:Remains() > 6 then
 			if Trinket1:Usable() then
 				return UseCooldown(Trinket1)
 			elseif Trinket2:Usable() then
