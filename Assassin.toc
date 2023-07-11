@@ -1,7 +1,7 @@
-## Interface: 100100
+## Interface: 100105
 ## Title: Assassin
 ## Notes: Assassin is an addon for rogues that simplifies gameplay and maximizes DPS by doing all the decision making for you
 ## Author: jcadduono @ curseforge.com or Spy#1955 @ BattleTag
 ## SavedVariablesPerCharacter: Assassin
-## Version: 10.1.0-1
+## Version: 10.1.5-1
 Assassin.lua
