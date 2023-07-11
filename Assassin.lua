@@ -31,6 +31,10 @@ local function between(n, min, max)
 	return n >= min and n <= max
 end
 
+local function clamp(n, min, max)
+	return (n < min and min) or (n > max and max) or n
+end
+
 local function startsWith(str, start) -- case insensitive check to see if a string matches the start of another string
 	if type(str) ~= 'string' then
 		return false
@@ -886,12 +890,12 @@ function Ability:CastLanded(dstGUID, event, missType)
 			end
 		end
 		if oldest then
-			Target.estimated_range = min(self.max_range, floor(self.velocity * max(0, Player.time - oldest.start)))
+			Target.estimated_range = floor(clamp(self.velocity * max(0, Player.time - oldest.start), 0, self.max_range))
 			self.traveling[oldest.guid] = nil
 		end
 	end
 	if self.range_est_start then
-		Target.estimated_range = floor(max(5, min(self.max_range, self.velocity * (Player.time - self.range_est_start))))
+		Target.estimated_range = floor(clamp(self.velocity * (Player.time - self.range_est_start), 5, self.max_range))
 		self.range_est_start = nil
 	elseif self.max_range < Target.estimated_range then
 		Target.estimated_range = self.max_range
@@ -1372,7 +1376,35 @@ Trinket.DragonfireBombDispenser = InventoryItem:Add(202610)
 Trinket.ElementiumPocketAnvil = InventoryItem:Add(202617)
 -- End Inventory Items
 
--- Start Player API
+-- Start Abilities Functions
+
+function Abilities:Update()
+	wipe(self.bySpellId)
+	wipe(self.velocity)
+	wipe(self.autoAoe)
+	wipe(self.trackAuras)
+	for _, ability in next, self.all do
+		if ability.known then
+			self.bySpellId[ability.spellId] = ability
+			if ability.spellId2 then
+				self.bySpellId[ability.spellId2] = ability
+			end
+			if ability.velocity > 0 then
+				self.velocity[#self.velocity + 1] = ability
+			end
+			if ability.auto_aoe then
+				self.autoAoe[#self.autoAoe + 1] = ability
+			end
+			if ability.aura_targets then
+				self.trackAuras[#self.trackAuras + 1] = ability
+			end
+		end
+	end
+end
+
+-- End Abilities Functions
+
+-- Start Player Functions
 
 function Player:EnergyTimeToMax(energy)
 	local deficit = (energy or self.energy.max) - self.energy.current
@@ -1509,7 +1541,7 @@ function Player:UpdatePoisons()
 	end
 end
 
-function Player:UpdateAbilities()
+function Player:UpdateKnown()
 	self.combo_points.max = UnitPowerMax('player', 4)
 
 	local node
@@ -1556,30 +1588,10 @@ function Player:UpdateAbilities()
 	end
 	ShadowTechniques.auto_count = 0
 
-	wipe(Abilities.bySpellId)
-	wipe(Abilities.velocity)
-	wipe(Abilities.autoAoe)
-	wipe(Abilities.trackAuras)
-	for _, ability in next, Abilities.all do
-		if ability.known then
-			Abilities.bySpellId[ability.spellId] = ability
-			if ability.spellId2 then
-				Abilities.bySpellId[ability.spellId2] = ability
-			end
-			if ability.velocity > 0 then
-				Abilities.velocity[#Abilities.velocity + 1] = ability
-			end
-			if ability.auto_aoe then
-				Abilities.autoAoe[#Abilities.autoAoe + 1] = ability
-			end
-			if ability.aura_targets then
-				Abilities.trackAuras[#Abilities.trackAuras + 1] = ability
-			end
-		end
-	end
-
 	self.combo_points.max_spend = 5 + (DeeperStratagem.known and 1 or 0) + (DeviousStratagem.known and 1 or 0) + (SecretStratagem.known and 1 or 0)
 	self:UpdatePoisons()
+
+	Abilities:Update()
 end
 
 function Player:UpdateThreat()
@@ -1621,7 +1633,7 @@ function Player:Update()
 	self.energy.regen = GetPowerRegenForPowerType(3)
 	self.energy.max = UnitPowerMax('player', 3)
 	self.energy.current = UnitPower('player', 3) + (self.energy.regen * self.execute_remains)
-	self.energy.current = min(max(self.energy.current, 0), self.energy.max)
+	self.energy.current = clamp(self.energy.current, 0, self.energy.max)
 	self.energy.deficit = self.energy.max - self.energy.current
 	for i = 2, 5 do
 		self.combo_points.anima_charged[i] = EchoingReprimand.known and EchoingReprimand[i]:Up()
@@ -1665,9 +1677,9 @@ function Player:Init()
 	Events:PLAYER_SPECIALIZATION_CHANGED('player')
 end
 
--- End Player API
+-- End Player Functions
 
--- Start Target API
+-- Start Target Functions
 
 function Target:UpdateHealth(reset)
 	Timer.health = 0
@@ -1747,7 +1759,7 @@ function Target:Stunned()
 	return false
 end
 
--- End Target API
+-- End Target Functions
 
 -- Start Ability Modifications
 
@@ -2773,7 +2785,7 @@ end
 
 -- End Action Priority Lists
 
--- Start UI API
+-- Start UI Functions
 
 function UI.DenyOverlayGlow(actionButton)
 	if Opt.glow.blizzard then
@@ -3124,7 +3136,7 @@ function UI:UpdateCombatWithin(seconds)
 	end
 end
 
--- End UI API
+-- End UI Functions
 
 -- Start Event Handling
 
@@ -3409,7 +3421,7 @@ function Events:PLAYER_EQUIPMENT_CHANGED()
 	Player.set_bonus.t30 = (Player:Equipped(202495) and 1 or 0) + (Player:Equipped(202496) and 1 or 0) + (Player:Equipped(202497) and 1 or 0) + (Player:Equipped(202498) and 1 or 0) + (Player:Equipped(202500) and 1 or 0)
 
 	Player:ResetSwing(true, true)
-	Player:UpdateAbilities()
+	Player:UpdateKnown()
 end
 
 function Events:PLAYER_SPECIALIZATION_CHANGED(unitId)
@@ -3447,7 +3459,7 @@ function Events:SPELL_UPDATE_COOLDOWN()
 end
 
 function Events:PLAYER_PVP_TALENT_UPDATE()
-	Player:UpdateAbilities()
+	Player:UpdateKnown()
 end
 
 function Events:ACTIONBAR_SLOT_CHANGED()
@@ -3455,7 +3467,7 @@ function Events:ACTIONBAR_SLOT_CHANGED()
 end
 
 function Events:GROUP_ROSTER_UPDATE()
-	Player.group_size = max(1, min(40, GetNumGroupMembers()))
+	Player.group_size = clamp(GetNumGroupMembers(), 1, 40)
 end
 
 function Events:PLAYER_ENTERING_WORLD()
@@ -3604,7 +3616,7 @@ SlashCmdList[ADDON] = function(msg, editbox)
 	end
 	if msg[1] == 'alpha' then
 		if msg[2] then
-			Opt.alpha = max(0, min(100, tonumber(msg[2]) or 100)) / 100
+			Opt.alpha = clamp(tonumber(msg[2]) or 100, 0, 100) / 100
 			UI:UpdateAlpha()
 		end
 		return Status('Icon transparency', Opt.alpha * 100 .. '%')
@@ -3660,9 +3672,9 @@ SlashCmdList[ADDON] = function(msg, editbox)
 		end
 		if msg[2] == 'color' then
 			if msg[5] then
-				Opt.glow.color.r = max(0, min(1, tonumber(msg[3]) or 0))
-				Opt.glow.color.g = max(0, min(1, tonumber(msg[4]) or 0))
-				Opt.glow.color.b = max(0, min(1, tonumber(msg[5]) or 0))
+				Opt.glow.color.r = clamp(tonumber(msg[3]) or 0, 0, 1)
+				Opt.glow.color.g = clamp(tonumber(msg[4]) or 0, 0, 1)
+				Opt.glow.color.b = clamp(tonumber(msg[5]) or 0, 0, 1)
 				UI:UpdateGlowColorAndScale()
 			end
 			return Status('Glow color', '|cFFFF0000' .. Opt.glow.color.r, '|cFF00FF00' .. Opt.glow.color.g, '|cFF0000FF' .. Opt.glow.color.b)
