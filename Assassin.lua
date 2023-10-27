@@ -1195,6 +1195,7 @@ GhostlyStrike.energy_cost = 30
 local GreenskinsWickers = Ability:Add(386823, true, true, 394131)
 GreenskinsWickers.buff_duration = 15
 local HiddenOpportunity = Ability:Add(383281, false, true)
+local ImprovedBetweenTheEyes = Ability:Add(235484, false, true)
 local KeepItRolling = Ability:Add(381989, true, true)
 KeepItRolling.buff_duration = 30
 KeepItRolling.cooldown_duration = 420
@@ -1205,6 +1206,7 @@ local QuickDraw = Ability:Add(196938, true, true)
 local SummarilyDispatched = Ability:Add(381990, true, true, 386868)
 SummarilyDispatched.talent_node = 90653
 SummarilyDispatched.buff_duration = 8
+local SwiftSlasher = Ability:Add(381988, true, true)
 ------ Procs
 local Broadside = Ability:Add(193356, true, true) -- Roll the Bones
 Broadside.buff_duration = 30
@@ -2415,16 +2417,20 @@ end
 
 APL[SPEC.OUTLAW].finish = function(self)
 --[[
-# BtE to keep the Crit debuff up, if RP is up, or for Greenskins, unless the target is about to die.
-actions.finish=between_the_eyes,if=target.time_to_die>3&(debuff.between_the_eyes.remains<4|talent.greenskins_wickers&!buff.greenskins_wickers.up&combo_points>=4|!talent.greenskins_wickers&buff.ruthless_precision.up)
-actions.finish+=/slice_and_dice,if=buff.slice_and_dice.remains<fight_remains&refreshable
+# Finishers  BtE to keep the Crit debuff up, if RP is up, or for Greenskins, unless the target is about to die.
+actions.finish=between_the_eyes,if=target.time_to_die>3&(debuff.between_the_eyes.remains<4|talent.greenskins_wickers&!buff.greenskins_wickers.up|!talent.greenskins_wickers&talent.improved_between_the_eyes&buff.ruthless_precision.up|!talent.greenskins_wickers&set_bonus.tier30_4pc)
+actions.finish+=/slice_and_dice,if=buff.slice_and_dice.remains<fight_remains&refreshable&(!talent.swift_slasher|combo_points>=cp_max_spend)
+actions.finish+=/cold_blood
 actions.finish+=/dispatch
 ]]
-	if BetweenTheEyes:Usable(Player:EnergyTimeToMax(50), true) and Target.timeToDie > 3 and (BetweenTheEyes:Remains() < 4 or (GreenskinsWickers.known and Player.combo_points.current >= 4 and GreenskinsWickers:Down()) or (not GreenskinsWickers.known and RuthlessPrecision:Up())) then
+	if BetweenTheEyes:Usable(Player:EnergyTimeToMax(50), true) and Target.timeToDie > 3 and (BetweenTheEyes:Remains() < 4 or (GreenskinsWickers.known and GreenskinsWickers:Down()) or (not GreenskinsWickers.known and ((ImprovedBetweenTheEyes.known and RuthlessPrecision:Up()) or Player.set_bonus.t30 >= 4))) then
 		return Pool(BetweenTheEyes)
 	end
-	if SliceAndDice:Usable(0, true) and SliceAndDice:Refreshable() and (Player.enemies > 1 or SliceAndDice:Remains() < Target.timeToDie) and (not Player.combo_points.anima_charged[Player.combo_points.current] or SliceAndDice:Down()) then
+	if SliceAndDice:Usable(0, true) and SliceAndDice:Refreshable() and (Player.enemies > 1 or SliceAndDice:Remains() < Target.timeToDie) and (not Player.combo_points.anima_charged[Player.combo_points.current] or SliceAndDice:Down()) and (not SwiftSlasher.known or Player.combo_points.current >= Player.combo_points.max_spend) then
 		return Pool(SliceAndDice)
+	end
+	if ColdBlood:Usable() then
+		UseCooldown(ColdBlood)
 	end
 	if Dispatch:Usable(0, true) then
 		return Pool(Dispatch)
