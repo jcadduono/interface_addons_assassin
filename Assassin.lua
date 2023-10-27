@@ -597,9 +597,6 @@ function Ability:Usable(seconds, pool)
 	if self.requires_charge and self:Charges() == 0 then
 		return false
 	end
-	if self.requires_stealth and not Player.stealthed then
-		return false
-	end
 	return self:Ready(seconds)
 end
 
@@ -983,11 +980,9 @@ Note: To get talent_node value for a talent, hover over talent and use macro:
 ------ Baseline
 local Ambush = Ability:Add(8676, false, true)
 Ambush.energy_cost = 50
-Ambush.requires_stealth = true
 local CheapShot = Ability:Add(1833, false, true)
 CheapShot.buff_duration = 4
 CheapShot.energy_cost = 40
-CheapShot.requires_stealth = true
 local CrimsonVial = Ability:Add(185311, true, true)
 CrimsonVial.buff_duration = 4
 CrimsonVial.cooldown_duration = 30
@@ -1178,6 +1173,8 @@ RollTheBones.buff_duration = 30
 RollTheBones.cooldown_duration = 45
 RollTheBones.energy_cost = 25
 ------ Talents
+local Audacity = Ability:Add(381845, true, true, 386270)
+Audacity.buff_duration = 10
 local BladeRush = Ability:Add(271877, false, true, 271881)
 BladeRush.cooldown_duration = 45
 BladeRush:AutoAoe()
@@ -1189,16 +1186,25 @@ Dreadblades.buff_duration = 10
 Dreadblades.cooldown_duration = 90
 Dreadblades.energy_cost = 30
 Dreadblades.aura_target = 'player'
+local FanTheHammer = Ability:Add(381846, true, true)
+FanTheHammer.talent_node = 90666
 local GhostlyStrike = Ability:Add(196937, false, true)
 GhostlyStrike.buff_duration = 10
 GhostlyStrike.cooldown_duration = 35
 GhostlyStrike.energy_cost = 30
 local GreenskinsWickers = Ability:Add(386823, true, true, 394131)
 GreenskinsWickers.buff_duration = 15
+local HiddenOpportunity = Ability:Add(383281, false, true)
+local KeepItRolling = Ability:Add(381989, true, true)
+KeepItRolling.buff_duration = 30
+KeepItRolling.cooldown_duration = 420
 local KillingSpree = Ability:Add(51690, false, true)
 KillingSpree.cooldown_duration = 120
 KillingSpree:AutoAoe()
 local QuickDraw = Ability:Add(196938, true, true)
+local SummarilyDispatched = Ability:Add(381990, true, true, 386868)
+SummarilyDispatched.talent_node = 90653
+SummarilyDispatched.buff_duration = 8
 ------ Procs
 local Broadside = Ability:Add(193356, true, true) -- Roll the Bones
 Broadside.buff_duration = 30
@@ -1227,7 +1233,6 @@ local Backstab = Ability:Add(53, false, true)
 Backstab.energy_cost = 35
 local Shadowstrike = Ability:Add(185438, false, true)
 Shadowstrike.energy_cost = 40
-Shadowstrike.requires_stealth = true
 local ShadowTechniques = Ability:Add(196912, true, true, 196911)
 local ShurikenStorm = Ability:Add(197835, false, true)
 ShurikenStorm.energy_cost = 35
@@ -1780,6 +1785,24 @@ function Ability:EnergyCost()
 	return cost
 end
 
+function Ambush:Usable(...)
+	if not (
+		Player.stealthed or
+		(Audacity.known and Audacity:Up()) or
+		(Sepsis.known and Sepsis.buff:Up())
+	) then
+		return false
+	end
+	return Ability.Usable(self, ...)
+end
+
+function Shadowstrike:Usable()
+	if not Player.stealthed then
+		return false
+	end
+	return Ability.Usable(self)
+end
+
 function CheapShot:EnergyCost()
 	if DirtyTricks.known then
 		return 0
@@ -1788,14 +1811,23 @@ function CheapShot:EnergyCost()
 end
 Gouge.EnergyCost = CheapShot.EnergyCost
 
-function CheapShot:Usable(seconds, pool)
+function CheapShot:Usable(...)
 	if not Target.stunnable then
 		return false
 	end
-	return Ability.Usable(self, seconds, pool)
+	if not Player.stealthed then
+		return false
+	end
+	return Ability.Usable(self, ...)
 end
-Gouge.Usable = CheapShot.Usable
-KidneyShot.Usable = CheapShot.Usable
+
+function Gouge:Usable(...)
+	if not Target.stunnable then
+		return false
+	end
+	return Ability.Usable(self, ...)
+end
+KidneyShot.Usable = Gouge.Usable
 
 function DanseMacabre:UsedFor(ability)
 	return Player.danse_stacks >= 1 and ability.last_used >= self.last_gained
@@ -1811,6 +1843,10 @@ end
 
 function SliceAndDice:Duration()
 	return self.buff_duration + (6 * Player.combo_points.current)
+end
+
+function Opportunity:MaxStack()
+	return 1 + (FanTheHammer.known and 5 or 0)
 end
 
 function Vanish:Usable()
@@ -1845,6 +1881,14 @@ end
 
 Garrote.TickingPoisoned = TickingPoisoned
 Rupture.TickingPoisoned = TickingPoisoned
+
+function Dispatch:EnergyCost()
+	local cost = Ability.EnergyCost(self)
+	if SummarilyDispatched.known then
+		cost = cost - (SummarilyDispatched:Stack() * 5)
+	end
+	return cost
+end
 
 function PistolShot:EnergyCost()
 	local cost = Ability.EnergyCost(self)
@@ -2213,18 +2257,18 @@ actions.precombat+=/stealth
 
 	end
 --[[
+actions+=/variable,name=stealthed_cto,value=talent.count_the_odds&(stealthed.basic|buff.shadowmeld.up|buff.shadow_dance.up)
 # Reroll BT + GM or single buffs early other than Broadside, TB with Shadowdust, or SnC with Blunderbuss
 actions+=/variable,name=rtb_reroll,value=rtb_buffs<2&!buff.broadside.up|rtb_buffs=2&buff.buried_treasure.up&buff.grand_melee.up
 # Ensure we get full Ambush CP gains and aren't rerolling Count the Odds buffs away
 actions+=/variable,name=ambush_condition,value=combo_points.deficit>=2+buff.broadside.up&energy>=50&(!conduit.count_the_odds|buff.roll_the_bones.remains>=10)
-# Finish at max possible CP without overflowing bonus combo points, unless for BtE which always should be 5+ CP
-actions+=/variable,name=finish_condition,value=combo_points>=cp_max_spend-buff.broadside.up-(buff.opportunity.up*talent.quick_draw.enabled)|effective_combo_points>=cp_max_spend
-# Always attempt to use BtE at 5+ CP, regardless of CP gen waste
-actions+=/variable,name=finish_condition,op=reset,if=cooldown.between_the_eyes.ready&effective_combo_points<5
+# Finish at 6 (5 with Summarily Dispatched talented) CP or CP Max-1, whichever is greater of the two
+actions+=/variable,name=finish_condition,value=combo_points>=((cp_max_spend-1)<?(6-talent.summarily_dispatched))|effective_combo_points>=cp_max_spend
 # With multiple targets, this variable is checked to decide whether some CDs should be synced with Blade Flurry
 actions+=/variable,name=blade_flurry_sync,value=spell_targets.blade_flurry<2&raid_event.adds.in>20|buff.blade_flurry.remains>1+talent.killing_spree.enabled
-actions+=/run_action_list,name=stealth,if=stealthed.all
+actions+=/call_action_list,name=stealth,if=stealthed.basic|buff.shadowmeld.up
 actions+=/call_action_list,name=cds
+actions+=/run_action_list,name=stealth,if=stealthed.all
 actions+=/run_action_list,name=finish,if=variable.finish_condition
 actions+=/call_action_list,name=build
 actions+=/arcane_torrent,if=energy.deficit>=15+energy.regen
@@ -2232,17 +2276,21 @@ actions+=/arcane_pulse
 actions+=/lights_judgment
 actions+=/bag_of_tricks
 ]]
-	self.ambush_condition = Player.combo_points.deficit >= (2 + (Broadside:Up() and 1 or 0)) and Player.energy.current >= 50 and (not CountTheOdds.known or not RollTheBones:Ready(30) or ((Broadside:Down() or TrueBearing:Down() or RuthlessPrecision:Down()) and (Broadside:Remains() > 15 or TrueBearing:Remains() > 15 or RuthlessPrecision:Remains() > 15)))
-	self.finish_condition = Player.combo_points.current >= (Player.combo_points.max_spend - (Broadside:Up() and 1 or 0) - (((QuickDraw.known and Opportunity:Up())) and 1 or 0)) or Player.combo_points.effective >= Player.combo_points.max_spend
-	if BetweenTheEyes:Ready() and Player.combo_points.effective < 5 then
-		self.finish_condition = false
-	end
+	self.stealthed_cto = CountTheOdds.known and (Stealth:Up() or Shadowmeld:Up() or ShadowDance:Up())
+	self.ambush_condition = Player.energy.current >= 50 and (HiddenOpportunity.known or (Player.combo_points.deficit >= (2 + (Broadside:Up() and 1 or 0)) and (not CountTheOdds.known or not RollTheBones:Ready(30) or ((Broadside:Down() or TrueBearing:Down() or RuthlessPrecision:Down()) and (Broadside:Remains() > 15 or TrueBearing:Remains() > 15 or RuthlessPrecision:Remains() > 15)))))
+	self.finish_condition = Player.combo_points.current >= max((Player.combo_points.max_spend - 1), (6 - (SummarilyDispatched.known and 1 or 0))) or Player.combo_points.effective >= Player.combo_points.max_spend
 	self.blade_flurry_sync = Player.enemies < 2 or BladeFlurry:Remains() > (1 + (KillingSpree.known and 1 or 0))
 
-	if Player.stealthed then
-		return self:stealth()
+	local apl
+	if Stealth:Up() or Shadowmeld:Up() then
+		apl = self:stealth()
+		if apl then return apl end
 	end
 	self:cds()
+	if Player.stealthed then
+		apl = self:stealth()
+		if apl then return apl end
+	end
 	if self.finish_condition then
 		return self:finish()
 	end
@@ -2262,14 +2310,43 @@ actions.stealth+=/ambush
 	end
 end
 
+APL[SPEC.OUTLAW].stealth_cds = function(self)
+--[[
+# Stealth Cooldowns
+actions.stealth_cds=variable,name=vanish_condition,value=talent.hidden_opportunity|!talent.shadow_dance|!cooldown.shadow_dance.ready
+actions.stealth_cds+=/variable,name=vanish_opportunity_condition,value=!talent.shadow_dance&talent.fan_the_hammer.rank+talent.quick_draw+talent.audacity<talent.count_the_odds+talent.keep_it_rolling
+actions.stealth_cds+=/vanish,if=talent.find_weakness&!talent.audacity&debuff.find_weakness.down&variable.ambush_condition&variable.vanish_condition
+actions.stealth_cds+=/vanish,if=talent.hidden_opportunity&!buff.audacity.up&(variable.vanish_opportunity_condition|buff.opportunity.stack<buff.opportunity.max_stack)&variable.ambush_condition&variable.vanish_condition
+actions.stealth_cds+=/vanish,if=(!talent.find_weakness|talent.audacity)&!talent.hidden_opportunity&variable.finish_condition&variable.vanish_condition
+actions.stealth_cds+=/variable,name=shadow_dance_condition,value=talent.shadow_dance&debuff.between_the_eyes.up&(!talent.ghostly_strike|debuff.ghostly_strike.up)&(!talent.dreadblades|!cooldown.dreadblades.ready)&(!talent.hidden_opportunity|!buff.audacity.up&(talent.fan_the_hammer.rank<2|!buff.opportunity.up))
+actions.stealth_cds+=/shadow_dance,if=!talent.keep_it_rolling&variable.shadow_dance_condition&buff.slice_and_dice.up&(variable.finish_condition|talent.hidden_opportunity)&(!talent.hidden_opportunity|!cooldown.vanish.ready)
+actions.stealth_cds+=/shadow_dance,if=talent.keep_it_rolling&variable.shadow_dance_condition&(cooldown.keep_it_rolling.remains<=30|cooldown.keep_it_rolling.remains>120&(variable.finish_condition|talent.hidden_opportunity))
+]]
+	self.vanish_condition = HiddenOpportunity.known or not ShadowDance.known or not ShadowDance:Ready()
+	self.vanish_opportunity_condition = not ShadowDance.known and (FanTheHammer.rank + (QuickDraw.known and 1 or 0) + (Audacity.known and 1 or 0)) < ((CountTheOdds.known and 1 or 0) + (KeepItRolling.known and 1 or 0))
+	if Vanish:Usable() and self.vanish_condition and (
+		(FindWeakness.known and not Audacity.known and FindWeakness:Down() and self.ambush_condition) or
+		(HiddenOpportunity.known and Audacity:Down() and (self.vanish_opportunity_condition or Opportunity:Stack() < Opportunity:MaxStack()) and self.ambush_condition) or
+		((not FindWeakness.known or Audacity.known) and not HiddenOpportunity.known and self.finish_condition)
+	) then
+		return UseCooldown(Vanish)
+	end
+	self.shadow_dance_condition = ShadowDance.known and BetweenTheEyes:Up() and (not GhostlyStrike.known or GhostlyStrike:Up()) and (not Dreadblades.known or not Dreadblades:Ready()) and (not HiddenOpportunity.known or (Audacity:Down() and (FanTheHammer.rank < 2 or Opportunity:Down())))
+	if ShadowDance:Usable() and self.shadow_dance_condition and (
+		(not KeepItRolling.known and SliceAndDice:Up() and (self.finish_condition or HiddenOpportunity.known) and (not HiddenOpportunity.known or not Vanish:Ready() or Player.group_size == 1)) or
+		(KeepItRolling.known and (KeepItRolling:Ready(30) or (not KeepItRolling:Ready(120) and (self.finish_condition or HiddenOpportunity.known))))
+	) then
+		return UseCooldown(ShadowDance)
+	end
+end
+
 APL[SPEC.OUTLAW].cds = function(self)
 --[[
+actions.cds+=/adrenaline_rush,if=!buff.adrenaline_rush.up
 # Blade Flurry on 2+ enemies
 actions.cds=blade_flurry,if=spell_targets>=2&!buff.blade_flurry.up
 # Using Ambush is a 2% increase, so Vanish can be sometimes be used as a utility spell unless using Master Assassin or Deathly Shadows
-actions.cds+=/vanish,if=!stealthed.all&variable.ambush_condition
 # With Master Asssassin, sync Vanish with a finisher or Ambush depending on BtE cooldown, or always a finisher with MfD
-actions.cds+=/adrenaline_rush,if=!buff.adrenaline_rush.up
 actions.cds+=/flagellation,target_if=max:target.time_to_die,if=!stealthed.all&(variable.finish_condition|target.time_to_die<13)
 actions.cds+=/dreadblades,if=!stealthed.all&combo_points<=2&(!covenant.venthyr|debuff.flagellation.up)&(!talent.marked_for_death|!cooldown.marked_for_death.ready)
 actions.cds+=/roll_the_bones,if=variable.rtb_reroll|buff.roll_the_bones.remains<(4-rtb_buffs)&(buff.broadside.down|(variable.finish_condition&buff.ruthless_precision.down&buff.true_bearing.down))
@@ -2280,8 +2357,9 @@ actions.cds+=/marked_for_death,if=raid_event.adds.in>30-raid_event.adds.duration
 # Attempt to sync Killing Spree with Vanish for Master Assassin
 # Use in 1-2T if BtE is up and won't cap Energy, or at 3T+ (2T+ with Deathly Shadows) or when Master Assassin is up.
 actions.cds+=/killing_spree,if=variable.blade_flurry_sync&!stealthed.rogue&(debuff.between_the_eyes.up&buff.dreadblades.down&energy.deficit>(energy.regen*2+15)|spell_targets.blade_flurry>2)
+actions.cds+=/call_action_list,name=stealth_cds,if=!stealthed.all|talent.count_the_odds&!talent.hidden_opportunity&!variable.stealthed_cto
 actions.cds+=/blade_rush,if=variable.blade_flurry_sync&(energy.time_to_max>2&!buff.dreadblades.up&!debuff.flagellation.up|energy<=30|spell_targets>2)
-actions.cds+=/shadowmeld,if=!stealthed.all&variable.ambush_condition
+actions.cds+=/shadowmeld,if=!stealthed.all&(talent.count_the_odds&variable.finish_condition|!talent.weaponmaster.enabled&variable.ambush_condition)
 actions.cds+=/potion,if=buff.bloodlust.react|fight_remains<30|buff.adrenaline_rush.up
 actions.cds+=/blood_fury
 actions.cds+=/berserking
@@ -2294,14 +2372,11 @@ actions.cds+=/use_item,name=scars_of_fraternal_strife,if=!buff.scars_of_fraterna
 actions.cds+=/use_items,slots=trinket1,if=debuff.between_the_eyes.up|trinket.1.has_stat.any_dps|fight_remains<=20
 actions.cds+=/use_items,slots=trinket2,if=debuff.between_the_eyes.up|trinket.2.has_stat.any_dps|fight_remains<=20
 ]]
-	if BladeFlurry:Usable() and Player.enemies >= 2 and BladeFlurry:Down() then
-		return UseCooldown(BladeFlurry)
-	end
-	if self.use_cds and Vanish:Usable() and not Player.stealthed and self.ambush_condition then
-		UseExtra(Vanish)
-	end
 	if self.use_cds and AdrenalineRush:Usable() and AdrenalineRush:Down() then
 		return UseCooldown(AdrenalineRush)
+	end
+	if BladeFlurry:Usable() and Player.enemies >= 2 and BladeFlurry:Down() then
+		return UseCooldown(BladeFlurry)
 	end
 	if self.use_cds and Flagellation:Usable() and not Player.stealthed and (self.finish_condition or Target.timeToDie < 13) then
 		return UseCooldown(Flagellation)
@@ -2318,10 +2393,13 @@ actions.cds+=/use_items,slots=trinket2,if=debuff.between_the_eyes.up|trinket.2.h
 	if self.use_cds and KillingSpree:Usable() and self.blade_flurry_sync and not Player.stealthed and ((BetweenTheEyes:Up() and (not Dreadblades.known or Dreadblades:Down()) and Player.energy.deficit > (Player.energy.regen * 2 + 15)) or Player.enemies > 2) then
 		return UseCooldown(KillingSpree)
 	end
+	if self.use_cds and (not Player.stealthed or (CountTheOdds.known and not HiddenOpportunity.known and not self.stealthed_cto)) then
+		self:stealth_cds()
+	end
 	if self.use_cds and BladeRush:Usable() and self.blade_flurry_sync and ((Player:EnergyTimeToMax() > 2 and (not Dreadblades.known or Dreadblades:Down()) and (not Flagellation.known or Flagellation:Down())) or Player.energy.current <= 30 or Player.enemies > 2) then
 		return UseCooldown(BladeRush)
 	end
-	if Shadowmeld:Usable() and not Player.stealthed and self.ambush_condition then
+	if Shadowmeld:Usable() and not Player.stealthed and ((CountTheOdds.known and self.finish_condition) or (not Weaponmaster.known and self.ambush_condition)) then
 		UseExtra(Shadowmeld)
 	end
 	if Opt.trinket then
@@ -2358,6 +2436,7 @@ APL[SPEC.OUTLAW].build = function(self)
 actions.build=sepsis
 actions.build+=/ghostly_strike,if=debuff.ghostly_strike.remains<=3
 actions.build+=/shiv,if=talent.tiny_toxic_blade
+actions.build+=/ambush,if=talent.hidden_opportunity&(buff.audacity.up|buff.sepsis_buff.up)
 actions.build+=/echoing_reprimand,if=!soulbind.effusive_anima_accelerator|variable.blade_flurry_sync
 actions.build+=/pistol_shot,if=buff.opportunity.up&(buff.greenskins_wickers.up|buff.tornado_trigger.up)
 # Use Pistol Shot with Opportunity if Combat Potency won't overcap energy, when it will exactly cap CP, or when using Quick Draw
@@ -2372,6 +2451,9 @@ actions.build+=/sinister_strike
 	if GhostlyStrike:Usable() and GhostlyStrike:Remains() <= 3 then
 		return GhostlyStrike
 	end
+	if HiddenOpportunity.known and Ambush:Usable() then
+		return Ambush
+	end
 	if TinyToxicBlade.known and Shiv:Usable() then
 		return Shiv
 	end
@@ -2385,6 +2467,9 @@ actions.build+=/sinister_strike
 		(not Weaponmaster.known and Player.combo_points.deficit <= (1 + (Broadside:Up() and 1 or 0)))
 	) then
 		return PistolShot
+	end
+	if HiddenOpportunity.known and Ambush:Usable(0, true) then
+		return Pool(Ambush)
 	end
 	if SinisterStrike:Usable(0, true) then
 		return Pool(SinisterStrike)
