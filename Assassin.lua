@@ -1088,6 +1088,7 @@ local Shiv = Ability:Add(5938, false, true)
 Shiv.cooldown_duration = 25
 Shiv.energy_cost = 20
 local Subterfuge = Ability:Add(108208, true, true, 115192)
+Subterfuge.buff_duration = 3
 local ThistleTea = Ability:Add(381623, true, true)
 ThistleTea.buff_duration = 6
 ThistleTea.cooldown_duration = 3
@@ -1182,7 +1183,8 @@ local VenomRush = Ability:Add(152152, false, true)
 local AdrenalineRush = Ability:Add(13750, true, true)
 AdrenalineRush.buff_duration = 20
 AdrenalineRush.cooldown_duration = 180
-local BetweenTheEyes = Ability:Add(315341, false, true)
+local BetweenTheEyes = Ability:Add(315341, true, true)
+BetweenTheEyes.buff_duration = 3
 BetweenTheEyes.cooldown_duration = 45
 BetweenTheEyes.energy_cost = 25
 BetweenTheEyes.cp_cost = 1
@@ -1208,13 +1210,10 @@ local BladeRush = Ability:Add(271877, false, true, 271881)
 BladeRush.cooldown_duration = 45
 BladeRush:AutoAoe()
 local CountTheOdds = Ability:Add(381982, true, true)
+local Crackshot = Ability:Add(423703, false, true)
+local DeftManeuvers = Ability:Add(381878, false, true)
 local DeviousStratagem = Ability:Add(394321, true, true)
 local DirtyTricks = Ability:Add(108216, false, true)
-local Dreadblades = Ability:Add(343142, false, true)
-Dreadblades.buff_duration = 10
-Dreadblades.cooldown_duration = 90
-Dreadblades.energy_cost = 30
-Dreadblades.aura_target = 'player'
 local FanTheHammer = Ability:Add(381846, true, true)
 FanTheHammer.talent_node = 90666
 local GhostlyStrike = Ability:Add(196937, false, true)
@@ -1224,6 +1223,7 @@ GhostlyStrike.energy_cost = 30
 local GreenskinsWickers = Ability:Add(386823, true, true, 394131)
 GreenskinsWickers.buff_duration = 15
 local HiddenOpportunity = Ability:Add(383281, false, true)
+local ImprovedAdrenalineRush = Ability:Add(395422, true, true, 395424)
 local ImprovedBetweenTheEyes = Ability:Add(235484, false, true)
 local KeepItRolling = Ability:Add(381989, true, true)
 KeepItRolling.buff_duration = 30
@@ -1236,6 +1236,7 @@ local SummarilyDispatched = Ability:Add(381990, true, true, 386868)
 SummarilyDispatched.talent_node = 90653
 SummarilyDispatched.buff_duration = 8
 local SwiftSlasher = Ability:Add(381988, true, true)
+local UnderhandedUpperHand = Ability:Add(424044, false, true)
 ------ Procs
 local Broadside = Ability:Add(193356, true, true) -- Roll the Bones
 Broadside.buff_duration = 30
@@ -1693,7 +1694,7 @@ function Player:Update()
 	self.swing.mh.remains = max(0, self.swing.mh.last + self.swing.mh.speed - self.time)
 	self.swing.oh.remains = max(0, self.swing.oh.last + self.swing.oh.speed - self.time)
 	self.moving = GetUnitSpeed('player') ~= 0
-	self.stealthed = Stealth:Up() or Vanish:Up() or (ShadowDance.known and ShadowDance:Up()) or (Sepsis.known and Sepsis.buff:Up()) or (Shadowmeld.known and Shadowmeld:Up())
+	self.stealthed = Stealth:Up() or Vanish:Up() or (ShadowDance.known and ShadowDance:Up()) or (Sepsis.known and Sepsis.buff:Up()) or (Shadowmeld.known and Shadowmeld:Up()) or ((Subterfuge.known or UnderHandedUpperhand.known) and Subterfuge:Up())
 	self:UpdateThreat()
 
 	trackAuras:Purge()
@@ -1880,6 +1881,10 @@ function DanseMacabre:UsedFor(ability)
 	return Player.danse_stacks >= 1 and ability.last_used >= self.last_gained
 end
 
+function BetweenTheEyes:Duration()
+	return self.buff_duration + (3 * Player.combo_points.current)
+end
+
 function Envenom:Duration()
 	return self.buff_duration + Player.combo_points.current
 end
@@ -1896,11 +1901,11 @@ function Opportunity:MaxStack()
 	return 1 + (FanTheHammer.known and 5 or 0)
 end
 
-function Vanish:Usable()
+function Vanish:Usable(...)
 	if Player.stealthed or Player.group_size == 1 then
 		return false
 	end
-	return Ability.Usable(self)
+	return Ability.Usable(self, ...)
 end
 Shadowmeld.Usable = Vanish.Usable
 
@@ -2262,7 +2267,7 @@ APL[SPEC.OUTLAW].Main = function(self)
 	self.rtb_remains = RollTheBones:Remains(true)
 	self.rtb_buffs = RollTheBones:Stack()
 	self.rtb_reroll = (self.rtb_buffs < 2 and Broadside:Down()) or (self.rtb_buffs == 2 and BuriedTreasure:Up() and GrandMelee:Up())
-	self.use_cds = Opt.cooldown and (Target.boss or Target.player or (not Opt.boss_only and Target.timeToDie > Opt.cd_ttd) or AdrenalineRush:Up() or (Dreadblades.known and Dreadblades:Up()))
+	self.use_cds = Opt.cooldown and (Target.boss or Target.player or (not Opt.boss_only and Target.timeToDie > Opt.cd_ttd) or AdrenalineRush:Up())
 
 	if Player:TimeInCombat() == 0 then
 --[[
@@ -2336,19 +2341,13 @@ actions+=/arcane_pulse
 actions+=/lights_judgment
 actions+=/bag_of_tricks
 ]]
-	self.stealthed_cto = CountTheOdds.known and (Stealth:Up() or Shadowmeld:Up() or ShadowDance:Up())
-	self.ambush_condition = Player.energy.current >= 50 and (HiddenOpportunity.known or (Player.combo_points.deficit >= (2 + (Broadside:Up() and 1 or 0)) and (not CountTheOdds.known or not RollTheBones:Ready(30) or ((Broadside:Down() or TrueBearing:Down() or RuthlessPrecision:Down()) and (Broadside:Remains() > 15 or TrueBearing:Remains() > 15 or RuthlessPrecision:Remains() > 15)))))
-	self.finish_condition = Player.combo_points.current >= max((Player.combo_points.max_spend - 1), (6 - (SummarilyDispatched.known and 1 or 0))) or Player.combo_points.effective >= Player.combo_points.max_spend
-	self.blade_flurry_sync = Player.enemies < 2 or BladeFlurry:Remains() > (1 + (KillingSpree.known and 1 or 0))
+	self.ambush_condition = Player.energy.current >= 50 and (HiddenOpportunity.known or Player.combo_points.deficit >= (2 + (ImprovedAmbush.known and 1 or 0) + (Broadside:Up() and 1 or 0)))
+	self.finish_condition = Player.combo_points.effective >= (Player.combo_points.max_spend - 1 - ((Player.stealthed and Crackshot.known) and 1 or 0))
+	self.blade_flurry_sync = Player.enemies < 2 or BladeFlurry:Remains() > Player.gcd
 
-	local apl
-	if Stealth:Up() or Shadowmeld:Up() then
-		apl = self:stealth()
-		if apl then return apl end
-	end
 	self:cds()
 	if Player.stealthed then
-		apl = self:stealth()
+		local apl = self:stealth()
 		if apl then return apl end
 	end
 	if self.finish_condition then
@@ -2369,10 +2368,24 @@ actions.stealth+=/dispatch,if=variable.finish_condition
 actions.stealth+=/pistol_shot,if=talent.crackshot&talent.fan_the_hammer.rank>=2&buff.opportunity.stack>=6&(buff.broadside.up&combo_points<=1|buff.greenskins_wickers.up)
 actions.stealth+=/ambush,if=talent.hidden_opportunity
 ]]
-	if Dispatch:Usable() and self.finish_condition then
-		return Dispatch
+	if Subterfuge.known and HiddenOpportunity.known and BladeFlurry:Usable() and Player.enemies >= 2 and BladeFlurry:Remains() < Player.gcd then
+		UseCooldown(BladeFlurry)
 	end
-	if Ambush:Usable() then
+	if self.finish_condition then
+		if ColdBlood:Usable() then
+			UseCooldown(ColdBlood)
+		end
+		if Crackshot.known and BetweenTheEyes:Usable() and (Shadowmeld:Down() or Stealth:Up()) then
+			return BetweenTheEyes
+		end
+		if Dispatch:Usable() then
+			return Dispatch
+		end
+	end
+	if Crackshot.known and PistolShot:Usable() and FanTheHammer.rank >= 2 and Opportunity:Stack() >= 6 and ((Broadside:Up() and Player.combo_points.current <= 1) or GreenskinsWickers:Up()) then
+		return PistolShot
+	end
+	if HiddenOpportunity.known and Ambush:Usable() then
 		return Ambush
 	end
 end
@@ -2394,21 +2407,25 @@ actions.stealth_cds+=/shadow_dance,if=!talent.keep_it_rolling&variable.shadow_da
 actions.stealth_cds+=/shadow_dance,if=talent.keep_it_rolling&variable.shadow_dance_condition&(cooldown.keep_it_rolling.remains<=30|cooldown.keep_it_rolling.remains>120&(variable.finish_condition|talent.hidden_opportunity))
 actions.stealth_cds+=/shadowmeld,if=variable.finish_condition&!cooldown.vanish.ready&!cooldown.shadow_dance.ready
 ]]
-	self.vanish_condition = HiddenOpportunity.known or not ShadowDance.known or not ShadowDance:Ready()
 	self.vanish_opportunity_condition = not ShadowDance.known and (FanTheHammer.rank + (QuickDraw.known and 1 or 0) + (Audacity.known and 1 or 0)) < ((CountTheOdds.known and 1 or 0) + (KeepItRolling.known and 1 or 0))
-	if Vanish:Usable() and self.vanish_condition and (
-		(FindWeakness.known and not Audacity.known and FindWeakness:Down() and self.ambush_condition) or
-		(HiddenOpportunity.known and Audacity:Down() and (self.vanish_opportunity_condition or Opportunity:Stack() < Opportunity:MaxStack()) and self.ambush_condition) or
-		((not FindWeakness.known or Audacity.known) and not HiddenOpportunity.known and self.finish_condition)
+	if Vanish:Usable() and (
+		(HiddenOpportunity.known and not Crackshot.known and Audacity:Down() and (self.vanish_opportunity_condition or Opportunity:Stack() < Opportunity:MaxStack()) and self.ambush_condition) or
+		((not HiddenOpportunity.known or Crackshot.known) and self.finish_condition)
 	) then
 		return UseCooldown(Vanish)
 	end
-	self.shadow_dance_condition = ShadowDance.known and BetweenTheEyes:Up() and (not GhostlyStrike.known or GhostlyStrike:Up()) and (not Dreadblades.known or not Dreadblades:Ready()) and (not HiddenOpportunity.known or (Audacity:Down() and (FanTheHammer.rank < 2 or Opportunity:Down())))
+	if Crackshot.known and ShadowDance:Usable() and self.finish_condition then
+		return UseCooldown(ShadowDance)
+	end
+	self.shadow_dance_condition = ShadowDance.known and not Crackshot.known and BetweenTheEyes:Up() and (not HiddenOpportunity.known or (Audacity:Down() and (FanTheHammer.rank < 2 or Opportunity:Down())))
 	if ShadowDance:Usable() and self.shadow_dance_condition and (
 		(not KeepItRolling.known and SliceAndDice:Up() and (self.finish_condition or HiddenOpportunity.known) and (not HiddenOpportunity.known or not Vanish:Ready() or Player.group_size == 1)) or
 		(KeepItRolling.known and (KeepItRolling:Ready(30) or (not KeepItRolling:Ready(120) and (self.finish_condition or HiddenOpportunity.known))))
 	) then
 		return UseCooldown(ShadowDance)
+	end
+	if Shadowmeld:Usable() and self.finish_condition and not Vanish:Ready() and not ShadowDance:Ready() then
+		return UseCooldown(Shadowmeld)
 	end
 end
 
@@ -2446,38 +2463,51 @@ actions.cds+=/use_item,name=windscar_whetstone,if=spell_targets.blade_flurry>des
 actions.cds+=/use_items,slots=trinket1,if=buff.between_the_eyes.up|trinket.1.has_stat.any_dps|fight_remains<=20
 actions.cds+=/use_items,slots=trinket2,if=buff.between_the_eyes.up|trinket.2.has_stat.any_dps|fight_remains<=20
 ]]
-	if self.use_cds and AdrenalineRush:Usable() and AdrenalineRush:Down() then
+	if self.use_cds and AdrenalineRush:Usable() and (AdrenalineRush:Down() or (Player.stealthed and Crackshot.known and ImprovedAdrenalineRush.known)) and (Player.combo_points.current <= 2 or not ImprovedAdrenalineRush.known) then
 		return UseCooldown(AdrenalineRush)
 	end
-	if BladeFlurry:Usable() and Player.enemies >= 2 and BladeFlurry:Down() then
+	if BladeFlurry:Usable() and (
+		(Player.enemies >= (2 - (UnderhandedUpperHand.known and 1 or 0)) and not Player.stealthed and BladeFlurry:Remains() < Player.gcd) or
+		(DeftManeuvers.known and not self.finish_condition and (Player.enemies >= 5 or (Player.enemies >= 3 and Player.combo_points.deficit == (Player.enemies + (Broadside:Up() and 1 or 0)))))
+	) then
 		return UseCooldown(BladeFlurry)
 	end
-	if self.use_cds and Flagellation:Usable() and not Player.stealthed and (self.finish_condition or Target.timeToDie < 13) then
-		return UseCooldown(Flagellation)
-	end
-	if self.use_cds and Dreadblades:Usable() and not Player.stealthed and Player.combo_points.effective <= 2 and (not Flagellation.known or Flagellation:Up()) and (not MarkedForDeath.known or not MarkedForDeath:Ready()) then
-		return UseCooldown(Dreadblades)
-	end
-	if RollTheBones:Usable() and (not Dreadblades.known or Dreadblades:Down()) and (self.rtb_reroll or (self.rtb_remains < (4 - self.rtb_buffs) and (Broadside:Down() or (self.finish_condition and RuthlessPrecision:Down() and TrueBearing:Down())))) then
+	if RollTheBones:Usable() and (self.rtb_reroll or (self.rtb_remains < (4 - self.rtb_buffs) and (Broadside:Down() or (self.finish_condition and RuthlessPrecision:Down() and TrueBearing:Down())))) then
 		return UseCooldown(RollTheBones)
 	end
-	if MarkedForDeath:Usable() and (Target.timeToDie < Player.combo_points.deficit or (not Player.stealthed and Player.combo_points.deficit >= (Player.combo_points.max_spend - 1) and (not Flagellation.known or not Flagellation:Ready(10) or Flagellation:Up()))) then
-		return UseCooldown(MarkedForDeath)
+	if self.use_cds and KeepItRolling:Usable() and not self.rtb_reroll and self.rtb_buffs >= (3 + (Player.set_bonus.t31 >= 4 and 1 or 0)) and (ShadowDance:Down() or self.rtb_buffs >= 6) then
+		return UseCooldown(KeepItRolling)
 	end
-	if self.use_cds and KillingSpree:Usable() and self.blade_flurry_sync and not Player.stealthed and ((BetweenTheEyes:Up() and (not Dreadblades.known or Dreadblades:Down()) and Player.energy.deficit > (Player.energy.regen * 2 + 15)) or Player.enemies > 2) then
-		return UseCooldown(KillingSpree)
+	if self.use_cds and GhostlyStrike:Usable() then
+		return UseCooldown(GhostlyStrike)
 	end
-	if self.use_cds and (not Player.stealthed or (CountTheOdds.known and not HiddenOpportunity.known and not self.stealthed_cto)) then
+	if self.use_cds and Sepsis:Usable() and (
+		(Crackshot.known and BetweenTheEyes:Ready() and self.finish_condition and not Player.stealthed) or
+		(not Crackshot.known and Target.timeToDie > 11 and BetweenTheEyes:Up()) or
+		(Target.boss and Target.timeToDie < 11)
+	) then
+		return UseCooldown(Sepsis)
+	end
+	if self.use_cds and not Player.stealthed and (not Crackshot.known or BetweenTheEyes:Ready()) then
 		self:stealth_cds()
 	end
-	if self.use_cds and BladeRush:Usable() and self.blade_flurry_sync and ((Player:EnergyTimeToMax() > 2 and (not Dreadblades.known or Dreadblades:Down()) and (not Flagellation.known or Flagellation:Down())) or Player.energy.current <= 30 or Player.enemies > 2) then
+	if ThistleTea:Usable() and ThistleTea:Down() and (
+		Player.energy.deficit >= 100 or
+		(Target.boss and Target.timeToDie < (ThistleTea:Charges() * 6))
+	) then
+		return UseCooldown(ThistleTea)
+	end
+	if self.use_cds and BladeRush:Usable() and not Player.stealthed and Player:EnergyTimeToMax() > 4 then
 		return UseCooldown(BladeRush)
 	end
-	if Shadowmeld:Usable() and not Player.stealthed and ((CountTheOdds.known and self.finish_condition) or (not Weaponmaster.known and self.ambush_condition)) then
-		UseExtra(Shadowmeld)
-	end
 	if Opt.trinket then
-		if (Target.boss and Target.timeToDie < 20) or (BetweenTheEyes:Up() and (not GhostlyStrike.known or GhostlyStrike:Up())) then
+		if Trinket.BeaconToTheBeyond:Usable() and not Player.stealthed and BetweenTheEyes:Up() then
+			return UseCooldown(Trinket.BeaconToTheBeyond)
+		elseif Trinket.DragonfireBombDispenser:Usable() and (Player.enemies > 1 or Target.timeToDie > 8) then
+			return UseCooldown(Trinket.DragonfireBombDispenser)
+		elseif Trinket.ElementiumPocketAnvil:Usable() and Player.energy.deficit >= (15 + Player.energy.regen) and not Player.stealthed then
+			return UseCooldown(Trinket.ElementiumPocketAnvil)
+		elseif (Target.boss and Target.timeToDie < 20) or (BetweenTheEyes:Up() and (not GhostlyStrike.known or GhostlyStrike:Up())) then
 			if Trinket1:Usable() then
 				return UseCooldown(Trinket1)
 			elseif Trinket2:Usable() then
@@ -2498,11 +2528,17 @@ actions.finish+=/killing_spree,if=debuff.ghostly_strike.up|!talent.ghostly_strik
 actions.finish+=/cold_blood
 actions.finish+=/dispatch
 ]]
-	if BetweenTheEyes:Usable(Player:EnergyTimeToMax(50), true) and Target.timeToDie > 3 and (BetweenTheEyes:Remains() < 4 or (GreenskinsWickers.known and GreenskinsWickers:Down()) or (not GreenskinsWickers.known and ((ImprovedBetweenTheEyes.known and RuthlessPrecision:Up()) or Player.set_bonus.t30 >= 4))) then
+	if BetweenTheEyes:Usable(Player:EnergyTimeToMax(50), true) and (
+		(not Crackshot.known and (not GreenskinsWickers.known or GreenskinsWickers:Down()) and (BetweenTheEyes:Remains() < 4 or ImprovedBetweenTheEyes.known or GreenskinsWickers.known or Player.set_bonus.t30 >= 4)) or
+		(Crackshot.known and ((Player.group_size == 1 or not Vanish:Ready(45)) and not ShadowDance:Ready(12)))
+	) then
 		return Pool(BetweenTheEyes)
 	end
 	if SliceAndDice:Usable(0, true) and SliceAndDice:Refreshable() and (Player.enemies > 1 or SliceAndDice:Remains() < Target.timeToDie) and (not Player.combo_points.anima_charged[Player.combo_points.current] or SliceAndDice:Down()) and (not SwiftSlasher.known or Player.combo_points.current >= Player.combo_points.max_spend) then
 		return Pool(SliceAndDice)
+	end
+	if KillingSpree:Usable() and (not GhostlyStrike.known or GhostlyStrike:Up()) then
+		UseCooldown(KillingSpree)
 	end
 	if ColdBlood:Usable() then
 		UseCooldown(ColdBlood)
@@ -2533,26 +2569,27 @@ actions.build+=/pool_resource,for_next=1
 actions.build+=/ambush,if=talent.hidden_opportunity
 actions.build+=/sinister_strike
 ]]
-	if Sepsis:Usable() then
-		UseCooldown(Sepsis)
-	end
-	if GhostlyStrike:Usable() and GhostlyStrike:Remains() <= 3 then
-		return GhostlyStrike
-	end
-	if HiddenOpportunity.known and Ambush:Usable() then
-		return Ambush
-	end
-	if TinyToxicBlade.known and Shiv:Usable() then
-		return Shiv
-	end
-	if EchoingReprimand:Usable() and (not EffusiveAnimaAccelerator.known or self.blade_flurry_sync) then
+	if EchoingReprimand:Usable() then
 		return EchoingReprimand
 	end
-	if PistolShot:Usable() and Opportunity:Up() and (
-		QuickDraw.known or
-		(GreenskinsWickers.known and GreenskinsWickers:Up()) or
-		Player.energy.deficit > (Player.energy.regen * 1.5) or
-		(not Weaponmaster.known and Player.combo_points.deficit <= (1 + (Broadside:Up() and 1 or 0)))
+	if HiddenOpportunity.known and Ambush:Usable() and Audacity:Up() then
+		return Ambush
+	end
+	if PistolShot:Usable() and (
+		(GreenskinsWickers.known and GreenskinsWickers:Up() and ((not FanTheHammer.known and Opportunity:Up()) or GreenskinsWickers:Remains() < 1.5)) or
+		(Opportunity:Up() and (
+			(FanTheHammer.known and (
+				(Audacity.known and HiddenOpportunity.known and Audacity:Down()) or
+				(Opportunity:Stack() >= Opportunity:MaxStack() or Opportunity:Remains() < 2) or
+				(Player.combo_points.deficit > ((1 + (QuickDraw.known and 1 or 0)) * FanTheHammer.rank) and (((Player.group_size == 1 or not Vanish:Ready()) and not ShadowDance:Ready()) or Player.stealthed or not Crackshot.known or FanTheHammer.rank <= 1))
+			)) or
+			(not FanTheHammer.known and (
+				Player.energy.deficit > (Player.energy.regen * 1.5) or
+				Player.combo_points.deficit <= (1 + (Broadside:Up() and 1 or 0)) or
+				QuickDraw.known or
+				(Audacity.known and Audacity:Down())
+			))
+		))
 	) then
 		return PistolShot
 	end
