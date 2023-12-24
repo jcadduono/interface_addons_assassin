@@ -243,7 +243,9 @@ local Player = {
 	},
 	main_freecast = false,
 	poison = {},
+	stealthed = false,
 	stealth_time = 0,
+	stealth_remains = 0,
 	danse_stacks = 0,
 }
 
@@ -1694,7 +1696,8 @@ function Player:Update()
 	self.swing.mh.remains = max(0, self.swing.mh.last + self.swing.mh.speed - self.time)
 	self.swing.oh.remains = max(0, self.swing.oh.last + self.swing.oh.speed - self.time)
 	self.moving = GetUnitSpeed('player') ~= 0
-	self.stealthed = Stealth:Up() or Vanish:Up() or (ShadowDance.known and ShadowDance:Up()) or (Sepsis.known and Sepsis.buff:Up()) or (Shadowmeld.known and Shadowmeld:Up()) or ((Subterfuge.known or UnderHandedUpperhand.known) and Subterfuge:Up())
+	self.stealth_remains = max(ShadowDance.known and ShadowDance:Remains() or 0, (Subterfuge.known or UnderHandedUpperhand.known) and Subterfuge:Remains() or 0, Sepsis.known and Sepsis.buff:Remains() or 0)
+	self.stealthed = self.stealth_remains > 0 or Stealth:Up() or Vanish:Up() or (Shadowmeld.known and Shadowmeld:Up())
 	self:UpdateThreat()
 
 	trackAuras:Purge()
@@ -1883,6 +1886,10 @@ end
 
 function BetweenTheEyes:Duration()
 	return self.buff_duration + (3 * Player.combo_points.current)
+end
+
+function BetweenTheEyes:Free()
+	return Crackshot.known and Player.stealthed
 end
 
 function Envenom:Duration()
@@ -3248,7 +3255,7 @@ end
 
 function UI:UpdateDisplay()
 	Timer.display = 0
-	local border, dim, dim_cd, text_center, text_cd, text_tr
+	local border, dim, dim_cd, text_center, text_cd, text_tl, text_tr
 
 	if Opt.dimmer then
 		dim = not ((not Player.main) or
@@ -3285,6 +3292,9 @@ function UI:UpdateDisplay()
 	if Player.danse_stacks > 0 then
 		text_tr = Player.danse_stacks
 	end
+	if Player.stealth_remains > 0 then
+		text_tl = format('%.1fs', Player.stealth_remains)
+	end
 	if border ~= assassinPanel.border.overlay then
 		assassinPanel.border.overlay = border
 		assassinPanel.border:SetTexture(ADDON_PATH .. (border or 'border') .. '.blp')
@@ -3292,6 +3302,7 @@ function UI:UpdateDisplay()
 
 	assassinPanel.dimmer:SetShown(dim)
 	assassinPanel.text.center:SetText(text_center)
+	assassinPanel.text.tl:SetText(text_tl)
 	assassinPanel.text.tr:SetText(text_tr)
 	--assassinPanel.text.bl:SetText(format('%.1fs', Target.timeToDie))
 	assassinCooldownPanel.text:SetText(text_cd)
@@ -3305,7 +3316,7 @@ function UI:UpdateCombat()
 
 	if Player.main then
 		assassinPanel.icon:SetTexture(Player.main.icon)
-		Player.main_freecast = (Player.main.energy_cost > 0 and Player.main:EnergyCost() == 0) or (Player.main.cp_cost > 0 and Player.main:CPCost() == 0)
+		Player.main_freecast = (Player.main.energy_cost > 0 and Player.main:EnergyCost() == 0) or (Player.main.cp_cost > 0 and Player.main:CPCost() == 0) or (Player.main.Free and Player.main:Free())
 	end
 	if Player.cd then
 		assassinCooldownPanel.icon:SetTexture(Player.cd.icon)
