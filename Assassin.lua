@@ -244,6 +244,7 @@ local Player = {
 	main_freecast = false,
 	poison = {},
 	stealthed = false,
+	stealthed_nomeld = false,
 	stealth_time = 0,
 	stealth_remains = 0,
 	danse_stacks = 0,
@@ -1697,7 +1698,8 @@ function Player:Update()
 	self.swing.oh.remains = max(0, self.swing.oh.last + self.swing.oh.speed - self.time)
 	self.moving = GetUnitSpeed('player') ~= 0
 	self.stealth_remains = max(ShadowDance.known and ShadowDance:Remains() or 0, (Subterfuge.known or UnderHandedUpperhand.known) and Subterfuge:Remains() or 0, Sepsis.known and Sepsis.buff:Remains() or 0)
-	self.stealthed = self.stealth_remains > 0 or Stealth:Up() or Vanish:Up() or (Shadowmeld.known and Shadowmeld:Up())
+	self.stealthed_nomeld = self.stealth_remains > 0 or Stealth:Up() or Vanish:Up()
+	self.stealthed = self.stealth_nomeld or (Shadowmeld.known and Shadowmeld:Up())
 	self:UpdateThreat()
 
 	trackAuras:Purge()
@@ -1889,7 +1891,7 @@ function BetweenTheEyes:Duration()
 end
 
 function BetweenTheEyes:Free()
-	return Crackshot.known and Player.stealthed
+	return Crackshot.known and Player.stealthed_nomeld
 end
 
 function Envenom:Duration()
@@ -2108,7 +2110,7 @@ APL[SPEC.ASSASSINATION].Main = function(self)
 		end
 		if not Player:InArenaOrBattleground() then
 		end
-		if not Player.stealthed then
+		if not Player.stealthed_nomeld then
 			return Stealth
 		end
 	else
@@ -2310,7 +2312,7 @@ actions.precombat+=/stealth
 		if RollTheBones:Usable() and (self.rtb_reroll or (Broadside:Down() and self.rtb_remains < 5)) then
 			UseCooldown(RollTheBones)
 		end
-		if not Player.stealthed then
+		if not Player.stealthed_nomeld then
 			return Stealth
 		end
 	else
