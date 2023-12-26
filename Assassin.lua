@@ -109,11 +109,12 @@ local function InitOpts()
 		pot = false,
 		trinket = true,
 		poisons = true,
-		priority_rotation = false,
 		last_poison = {
 			lethal = false,
 			nonlethal = false,
 		},
+		priority_rotation = false,
+		vanish_solo = false,
 	})
 end
 
@@ -1073,9 +1074,6 @@ local Gouge = Ability:Add(1776, false, true)
 Gouge.buff_duration = 4
 Gouge.cooldown_duration = 15
 Gouge.energy_cost = 25
-local MarkedForDeath = Ability:Add(137619, false, true)
-MarkedForDeath.cooldown_duration = 60
-MarkedForDeath.triggers_gcd = false
 local Nightstalker = Ability:Add(14062, false, true)
 local ResoundingClarity = Ability:Add(381622, true, true)
 local SealFate = Ability:Add(14190, true, true, 14189)
@@ -1234,6 +1232,8 @@ KeepItRolling.cooldown_duration = 420
 local KillingSpree = Ability:Add(51690, false, true)
 KillingSpree.cooldown_duration = 120
 KillingSpree:AutoAoe()
+local LoadedDice = Ability:Add(256170, true, true, 256171)
+LoadedDice.buff_duration = 45
 local QuickDraw = Ability:Add(196938, true, true)
 local SummarilyDispatched = Ability:Add(381990, true, true, 386868)
 SummarilyDispatched.talent_node = 90653
@@ -1699,7 +1699,7 @@ function Player:Update()
 	self.moving = GetUnitSpeed('player') ~= 0
 	self.stealth_remains = max(ShadowDance.known and ShadowDance:Remains() or 0, (Subterfuge.known or UnderHandedUpperhand.known) and Subterfuge:Remains() or 0, Sepsis.known and Sepsis.buff:Remains() or 0)
 	self.stealthed_nomeld = self.stealth_remains > 0 or Stealth:Up() or Vanish:Up()
-	self.stealthed = self.stealth_nomeld or (Shadowmeld.known and Shadowmeld:Up())
+	self.stealthed = self.stealthed_nomeld or (Shadowmeld.known and Shadowmeld:Up())
 	self:UpdateThreat()
 
 	trackAuras:Purge()
@@ -1911,7 +1911,7 @@ function Opportunity:MaxStack()
 end
 
 function Vanish:Usable(...)
-	if Player.stealthed or Player.group_size == 1 then
+	if Player.stealthed or (not Opt.vanish_solo and Player.group_size == 1) then
 		return false
 	end
 	return Ability.Usable(self, ...)
@@ -2027,6 +2027,20 @@ function RollTheBones:Remains(rtbOnly)
 		end
 	end
 	return max
+end
+
+function RollTheBones:WillLose(buff)
+	local count = self:Stack()
+	if not buff then
+		if Player.set_bonus.t31 >= 4 then
+			count = count - 1
+		end
+		return max(0, count)
+	end
+	if buff:Down() or (Player.set_bonus.t31 >= 4 and count <= 1) then
+		return false
+	end
+	return true
 end
 
 function ShadowTechniques:Energize(amount, overCap, powerType)
@@ -2182,9 +2196,6 @@ APL[SPEC.ASSASSINATION].cds = function(self)
 	if ArcaneTorrent:Usable() and Envenom:Down() and Player.energy.deficit >= 15 + Player.energy_regen_combined * Player.gcd_remains * 1.1 then
 		return UseCooldown(ArcaneTorrent)
 	end
-	if MarkedForDeath:Usable() and Target.timeToDie < Player.combo_points.deficit * 1.5 then
-		return UseCooldown(MarkedForDeath)
-	end
 	if Vendetta:Usable() and (not Exsanguinate.known or Rupture:Up()) then
 		return UseCooldown(Vendetta)
 	end
@@ -2273,10 +2284,8 @@ actions.stealthed+=/mutilate
 end
 
 APL[SPEC.OUTLAW].Main = function(self)
-	self.rtb_remains = RollTheBones:Remains(true)
-	self.rtb_buffs = RollTheBones:Stack()
-	self.rtb_reroll = (self.rtb_buffs < 2 and Broadside:Down()) or (self.rtb_buffs == 2 and BuriedTreasure:Up() and GrandMelee:Up())
 	self.use_cds = Opt.cooldown and (Target.boss or Target.player or (not Opt.boss_only and Target.timeToDie > Opt.cd_ttd) or AdrenalineRush:Up())
+	self:rtb()
 
 	if Player:TimeInCombat() == 0 then
 --[[
@@ -2300,17 +2309,17 @@ actions.precombat+=/stealth
 				return Player.poison.nonlethal
 			end
 		end
-		if not Player:InArenaOrBattleground() then
-
+		if self.use_cds and UnderhandedUpperHand.known and BladeFlurry:Usable() and AdrenalineRush:Ready() then
+			UseCooldown(BladeFlurry)
 		end
-		if MarkedForDeath:Usable() and Player.combo_points.current < 3 then
-			UseCooldown(MarkedForDeath)
+		if RollTheBones:Usable() and (self.rtb_reroll or self.rtb_remains < 5 or (self.rtb_buffs == 1 and Player.set_bonus.t31 >= 4)) then
+			UseCooldown(RollTheBones)
+		end
+		if self.use_cds and ImprovedAdrenalineRush.known and AdrenalineRush:Usable() then
+			UseCooldown(AdrenalineRush)
 		end
 		if SliceAndDice:Usable() and SliceAndDice:Remains() < (4 * Player.combo_points.current) and Player.combo_points.current >= 2 and Target.timeToDie > SliceAndDice:Remains() then
 			return SliceAndDice
-		end
-		if RollTheBones:Usable() and (self.rtb_reroll or (Broadside:Down() and self.rtb_remains < 5)) then
-			UseCooldown(RollTheBones)
 		end
 		if not Player.stealthed_nomeld then
 			return Stealth
@@ -2323,18 +2332,6 @@ actions.precombat+=/stealth
 actions=stealth
 # Interrupt on cooldown to allow simming interactions with that
 actions+=/kick
-# Default Roll the Bones reroll rule: reroll for any buffs that aren't Buried Treasure, excluding Grand Melee in single target
-actions+=/variable,name=rtb_reroll,value=rtb_buffs.will_lose=(rtb_buffs.will_lose.buried_treasure+rtb_buffs.will_lose.grand_melee&spell_targets.blade_flurry<2&raid_event.adds.in>10)
-# Crackshot builds without T31 should reroll for True Bearing (or Broadside without Hidden Opportunity) if we won't lose over 1 buff
-actions+=/variable,name=rtb_reroll,if=talent.crackshot&!set_bonus.tier31_4pc,value=(!rtb_buffs.will_lose.true_bearing&talent.hidden_opportunity|!rtb_buffs.will_lose.broadside&!talent.hidden_opportunity)&rtb_buffs.will_lose<=1
-# Crackshot builds with T31 should reroll if we won't lose over 1 buff (2 with Loaded Dice)
-actions+=/variable,name=rtb_reroll,if=talent.crackshot&set_bonus.tier31_4pc,value=(rtb_buffs.will_lose<=1+buff.loaded_dice.up)
-# Hidden Opportunity builds without Crackshot should reroll for Skull and Crossbones or any 2 buffs excluding Grand Melee in single target
-actions+=/variable,name=rtb_reroll,if=!talent.crackshot&talent.hidden_opportunity,value=!rtb_buffs.will_lose.skull_and_crossbones&(rtb_buffs.will_lose<2+rtb_buffs.will_lose.grand_melee&spell_targets.blade_flurry<2&raid_event.adds.in>10)
-# Additional reroll rules if all active buffs will not be rolled away and we don't already have 5+ buffs outside of stealth
-actions+=/variable,name=rtb_reroll,value=variable.rtb_reroll&rtb_buffs.longer=0|rtb_buffs.normal=0&rtb_buffs.longer>=1&rtb_buffs<5&rtb_buffs.max_remains<=39&!stealthed.all
-# Avoid rerolls when we will not have time remaining on the fight or add wave to recoup the opportunity cost of the global
-actions+=/variable,name=rtb_reroll,op=reset,if=!(raid_event.adds.remains>12|raid_event.adds.up&(raid_event.adds.in-raid_event.adds.remains)<6|target.time_to_die>12)|fight_remains<12
 actions+=/variable,name=ambush_condition,value=(talent.hidden_opportunity|combo_points.deficit>=2+talent.improved_ambush+buff.broadside.up)&energy>=50
 # Use finishers if at -1 from max combo points, or -2 in Stealth with Crackshot
 actions+=/variable,name=finish_condition,value=effective_combo_points>=cp_max_spend-1-(stealthed.all&talent.crackshot)
@@ -2350,6 +2347,7 @@ actions+=/arcane_pulse
 actions+=/lights_judgment
 actions+=/bag_of_tricks
 ]]
+	self.vanish_condition = Vanish.known and (Opt.vanish_solo or Player.group_size > 1)
 	self.ambush_condition = Player.energy.current >= 50 and (HiddenOpportunity.known or Player.combo_points.deficit >= (2 + (ImprovedAmbush.known and 1 or 0) + (Broadside:Up() and 1 or 0)))
 	self.finish_condition = Player.combo_points.effective >= (Player.combo_points.max_spend - 1 - ((Player.stealthed and Crackshot.known) and 1 or 0))
 	self.blade_flurry_sync = Player.enemies < 2 or BladeFlurry:Remains() > Player.gcd
@@ -2363,6 +2361,39 @@ actions+=/bag_of_tricks
 		return self:finish()
 	end
 	return self:build()
+end
+
+APL[SPEC.OUTLAW].rtb = function(self)
+--[[
+# Default Roll the Bones reroll rule: reroll for any buffs that aren't Buried Treasure, excluding Grand Melee in single target
+actions+=/variable,name=rtb_reroll,value=rtb_buffs.will_lose=(rtb_buffs.will_lose.buried_treasure+rtb_buffs.will_lose.grand_melee&spell_targets.blade_flurry<2&raid_event.adds.in>10)
+# Crackshot builds without T31 should reroll for True Bearing (or Broadside without Hidden Opportunity) if we won't lose over 1 buff
+actions+=/variable,name=rtb_reroll,if=talent.crackshot&!set_bonus.tier31_4pc,value=(!rtb_buffs.will_lose.true_bearing&talent.hidden_opportunity|!rtb_buffs.will_lose.broadside&!talent.hidden_opportunity)&rtb_buffs.will_lose<=1
+# Crackshot builds with T31 should reroll if we won't lose over 1 buff (2 with Loaded Dice)
+actions+=/variable,name=rtb_reroll,if=talent.crackshot&set_bonus.tier31_4pc,value=(rtb_buffs.will_lose<=1+buff.loaded_dice.up)
+# Hidden Opportunity builds without Crackshot should reroll for Skull and Crossbones or any 2 buffs excluding Grand Melee in single target
+actions+=/variable,name=rtb_reroll,if=!talent.crackshot&talent.hidden_opportunity,value=!rtb_buffs.will_lose.skull_and_crossbones&(rtb_buffs.will_lose<2+rtb_buffs.will_lose.grand_melee&spell_targets.blade_flurry<2&raid_event.adds.in>10)
+# Additional reroll rules if all active buffs will not be rolled away and we don't already have 5+ buffs outside of stealth
+actions+=/variable,name=rtb_reroll,value=variable.rtb_reroll&rtb_buffs.longer=0|rtb_buffs.normal=0&rtb_buffs.longer>=1&rtb_buffs<5&rtb_buffs.max_remains<=39&!stealthed.all
+# Avoid rerolls when we will not have time remaining on the fight or add wave to recoup the opportunity cost of the global
+actions+=/variable,name=rtb_reroll,op=reset,if=!(raid_event.adds.remains>12|raid_event.adds.up&(raid_event.adds.in-raid_event.adds.remains)<6|target.time_to_die>12)|fight_remains<12
+]]
+	self.rtb_remains = RollTheBones:Remains()
+	self.rtb_buffs = RollTheBones:Stack()
+	self.rtb_will_lose = RollTheBones:WillLose()
+	if Target.boss and Target.timeToDie < 12 then
+		self.rtb_reroll = false
+	elseif Crackshot.known then
+		if Player.set_bonus.t31 >= 4 then
+			self.rtb_reroll = self.rtb_will_lose <= (1 + (LoadedDice:Up() and 1 or 0))
+		else
+			self.rtb_reroll = self.rtb_will_lose <= 1 and ((HiddenOpportunity.known and not RollTheBones:WillLose(TrueBearing)) or (not HiddenOpportunity.known and not RollTheBones:WillLose(Broadside)))
+		end
+	elseif HiddenOpportunity.known then
+		self.rtb_reroll = not RollTheBones:WillLose(SkullAndCrossbones) and self.rtb_will_lose < (2 + ((Player.enemies < 2 and RollTheBones:WillLose(GrandMelee)) and 1 or 0))
+	else
+		self.rtb_reroll = self.rtb_will_lose == ((RollTheBones:WillLose(BuriedTreasure) and 1 or 0) + ((Player.enemies < 2 and RollTheBones:WillLose(GrandMelee)) and 1 or 0))
+	end
 end
 
 APL[SPEC.OUTLAW].stealth = function(self)
@@ -2417,7 +2448,7 @@ actions.stealth_cds+=/shadow_dance,if=talent.keep_it_rolling&variable.shadow_dan
 actions.stealth_cds+=/shadowmeld,if=variable.finish_condition&!cooldown.vanish.ready&!cooldown.shadow_dance.ready
 ]]
 	self.vanish_opportunity_condition = not ShadowDance.known and (FanTheHammer.rank + (QuickDraw.known and 1 or 0) + (Audacity.known and 1 or 0)) < ((CountTheOdds.known and 1 or 0) + (KeepItRolling.known and 1 or 0))
-	if Vanish:Usable() and (
+	if self.vanish_condition and Vanish:Usable() and (
 		(HiddenOpportunity.known and not Crackshot.known and Audacity:Down() and (self.vanish_opportunity_condition or Opportunity:Stack() < Opportunity:MaxStack()) and self.ambush_condition) or
 		((not HiddenOpportunity.known or Crackshot.known) and self.finish_condition)
 	) then
@@ -2428,12 +2459,12 @@ actions.stealth_cds+=/shadowmeld,if=variable.finish_condition&!cooldown.vanish.r
 	end
 	self.shadow_dance_condition = ShadowDance.known and not Crackshot.known and BetweenTheEyes:Up() and (not HiddenOpportunity.known or (Audacity:Down() and (FanTheHammer.rank < 2 or Opportunity:Down())))
 	if ShadowDance:Usable() and self.shadow_dance_condition and (
-		(not KeepItRolling.known and SliceAndDice:Up() and (self.finish_condition or HiddenOpportunity.known) and (not HiddenOpportunity.known or not Vanish:Ready() or Player.group_size == 1)) or
+		(not KeepItRolling.known and SliceAndDice:Up() and (self.finish_condition or HiddenOpportunity.known) and (not HiddenOpportunity.known or not self.vanish_condition or not Vanish:Ready())) or
 		(KeepItRolling.known and (KeepItRolling:Ready(30) or (not KeepItRolling:Ready(120) and (self.finish_condition or HiddenOpportunity.known))))
 	) then
 		return UseCooldown(ShadowDance)
 	end
-	if Shadowmeld:Usable() and self.finish_condition and not Vanish:Ready() and not ShadowDance:Ready() then
+	if self.vanish_condition and Shadowmeld:Usable() and self.finish_condition and not Vanish:Ready() and not ShadowDance:Ready() then
 		return UseCooldown(Shadowmeld)
 	end
 end
@@ -2481,7 +2512,12 @@ actions.cds+=/use_items,slots=trinket2,if=buff.between_the_eyes.up|trinket.2.has
 	) then
 		return UseCooldown(BladeFlurry)
 	end
-	if RollTheBones:Usable() and (self.rtb_reroll or (self.rtb_remains < (4 - self.rtb_buffs) and (Broadside:Down() or (self.finish_condition and RuthlessPrecision:Down() and TrueBearing:Down())))) then
+	if RollTheBones:Usable() and (
+		self.rtb_reroll or
+		self.rtb_buffs == 0 or
+		(self.rtb_remains <= 2 and Player.set_bonus.t31 >= 4) or
+		(self.rtb_remains <= 7 and (ShadowDance:Ready() or (self.vanish_condition and Vanish:Ready())))
+	) then
 		return UseCooldown(RollTheBones)
 	end
 	if self.use_cds and KeepItRolling:Usable() and not self.rtb_reroll and self.rtb_buffs >= (3 + (Player.set_bonus.t31 >= 4 and 1 or 0)) and (ShadowDance:Down() or self.rtb_buffs >= 6) then
@@ -2539,7 +2575,7 @@ actions.finish+=/dispatch
 ]]
 	if BetweenTheEyes:Usable(Player:EnergyTimeToMax(50), true) and (
 		(not Crackshot.known and (not GreenskinsWickers.known or GreenskinsWickers:Down()) and (BetweenTheEyes:Remains() < 4 or ImprovedBetweenTheEyes.known or GreenskinsWickers.known or Player.set_bonus.t30 >= 4)) or
-		(Crackshot.known and ((Player.group_size == 1 or not Vanish:Ready(45)) and not ShadowDance:Ready(12)))
+		(Crackshot.known and ((not self.vanish_condition or not Vanish:Ready(45)) and not ShadowDance:Ready(12)))
 	) then
 		return Pool(BetweenTheEyes)
 	end
@@ -2590,7 +2626,7 @@ actions.build+=/sinister_strike
 			(FanTheHammer.known and (
 				(Audacity.known and HiddenOpportunity.known and Audacity:Down()) or
 				(Opportunity:Stack() >= Opportunity:MaxStack() or Opportunity:Remains() < 2) or
-				(Player.combo_points.deficit > ((1 + (QuickDraw.known and 1 or 0)) * FanTheHammer.rank) and (((Player.group_size == 1 or not Vanish:Ready()) and not ShadowDance:Ready()) or Player.stealthed or not Crackshot.known or FanTheHammer.rank <= 1))
+				(Player.combo_points.deficit > ((1 + (QuickDraw.known and 1 or 0)) * FanTheHammer.rank) and (((not self.vanish_condition or not Vanish:Ready()) and not ShadowDance:Ready()) or Player.stealthed or not Crackshot.known or FanTheHammer.rank <= 1))
 			)) or
 			(not FanTheHammer.known and (
 				Player.energy.deficit > (Player.energy.regen * 1.5) or
@@ -2637,9 +2673,6 @@ actions.precombat+=/slice_and_dice,precombat_seconds=1
 		end
 		if not Player.stealthed then
 			return Stealth
-		end
-		if MarkedForDeath:Usable() and Player.combo_points.current < 3 then
-			UseCooldown(MarkedForDeath)
 		end
 		if SliceAndDice:Usable() and SliceAndDice:Remains() < (4 * Player.combo_points.current) and Player.combo_points.current >= 2 then
 			return SliceAndDice
@@ -2766,12 +2799,6 @@ actions.cds+=/use_items,if=!stealthed.all|fight_remains<10
 	end
 	if SymbolsOfDeath:Usable() and self.rotten_condition and self.snd_condition and (Player.set_bonus.t30 < 2 or (SymbolsOfDeath:Remains() < 1 and not ShadowDance:Ready(SymbolsOfDeath:Remains() + 5))) and ((not Flagellation.known and (Player.combo_points.current <= 1 or not TheRotten.known)) or (Flagellation.known and (not Flagellation:Ready(10) or (Flagellation:Ready() and Player.combo_points.current >= 5)))) then
 		return UseCooldown(SymbolsOfDeath)
-	end
-	if MarkedForDeath:Usable() and (
-		(Player.enemies > 1 and Target.timeToDie < Player.combo_points.deficit) or
-		(not Player.stealthed and Player.combo_points.deficit >= Player.combo_points.max_spend)
-	) then
-		return UseCooldown(MarkedForDeath)
 	end
 	if ShadowBlades:Usable() and ShadowBlades:Down() and ((self.snd_condition and Player.combo_points.deficit >= 2 and (Target.timeToDie >= 10 or Player.enemies > 1) and (not Sepsis.known or Sepsis:Ready(8) or Sepsis:Up())) or (Target.boss and Target.timeToDie < 20)) then
 		return UseCooldown(ShadowBlades)
@@ -3655,7 +3682,7 @@ function Events:PLAYER_EQUIPMENT_CHANGED()
 
 	Player.set_bonus.t29 = (Player:Equipped(200369) and 1 or 0) + (Player:Equipped(200371) and 1 or 0) + (Player:Equipped(200372) and 1 or 0) + (Player:Equipped(200373) and 1 or 0) + (Player:Equipped(200374) and 1 or 0)
 	Player.set_bonus.t30 = (Player:Equipped(202495) and 1 or 0) + (Player:Equipped(202496) and 1 or 0) + (Player:Equipped(202497) and 1 or 0) + (Player:Equipped(202498) and 1 or 0) + (Player:Equipped(202500) and 1 or 0)
-	Player.set_bonus.t30 = (Player:Equipped(207234) and 1 or 0) + (Player:Equipped(207235) and 1 or 0) + (Player:Equipped(207236) and 1 or 0) + (Player:Equipped(207237) and 1 or 0) + (Player:Equipped(207239) and 1 or 0)
+	Player.set_bonus.t31 = (Player:Equipped(207234) and 1 or 0) + (Player:Equipped(207235) and 1 or 0) + (Player:Equipped(207236) and 1 or 0) + (Player:Equipped(207237) and 1 or 0) + (Player:Equipped(207239) and 1 or 0)
 
 	Player:ResetSwing(true, true)
 	Player:UpdateKnown()
@@ -4038,6 +4065,12 @@ SlashCmdList[ADDON] = function(msg, editbox)
 		end
 		return Status('Use "priority rotation" mode (off by default)', Opt.priority_rotation)
 	end
+	if startsWith(msg[1], 'va') then
+		if msg[2] then
+			Opt.vanish_solo = msg[2] == 'on'
+		end
+		return Status('Use Vanish and Shadowmeld while solo (off by default, use for training dummies)', Opt.vanish_solo)
+	end
 	if msg[1] == 'reset' then
 		assassinPanel:ClearAllPoints()
 		assassinPanel:SetPoint('CENTER', 0, -169)
@@ -4070,6 +4103,7 @@ SlashCmdList[ADDON] = function(msg, editbox)
 		'trinket |cFF00C000on|r/|cFFC00000off|r - show on-use trinkets in cooldown UI',
 		'poisons |cFF00C000on|r/|cFFC00000off|r - show a reminder for poisons (5 minutes outside combat)',
 		'priority |cFF00C000on|r/|cFFC00000off|r - use "priority rotation" mode (off by default)',
+		'vanish |cFF00C000on|r/|cFFC00000off|r - use Vanish and Shadowmeld while solo (off by default)',
 		'|cFFFFD000reset|r - reset the location of the ' .. ADDON .. ' UI to default',
 	} do
 		print('  ' .. SLASH_Assassin1 .. ' ' .. cmd)
