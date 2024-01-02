@@ -2321,13 +2321,13 @@ actions.precombat+=/stealth
 				return Player.poison.nonlethal
 			end
 		end
-		if self.use_cds and UnderhandedUpperHand.known and BladeFlurry:Usable() and AdrenalineRush:Ready() then
+		if self.use_cds and UnderhandedUpperHand.known and BladeFlurry:Usable() and AdrenalineRush:Ready() and BladeFlurry:Down() then
 			UseCooldown(BladeFlurry)
 		end
 		if RollTheBones:Usable() and (self.rtb_reroll or self.rtb_remains < 5 or (self.rtb_buffs == 1 and Player.set_bonus.t31 >= 4)) then
 			UseCooldown(RollTheBones)
 		end
-		if self.use_cds and ImprovedAdrenalineRush.known and AdrenalineRush:Usable() then
+		if self.use_cds and ImprovedAdrenalineRush.known and AdrenalineRush:Usable() and AdrenalineRush:Down() then
 			UseCooldown(AdrenalineRush)
 		end
 		if SliceAndDice:Usable() and SliceAndDice:Remains() < (4 * Player.combo_points.current) and Player.combo_points.current >= 2 and Target.timeToDie > SliceAndDice:Remains() then
@@ -2429,8 +2429,8 @@ actions.stealth+=/ambush,if=talent.hidden_opportunity
 		if ColdBlood:Usable() then
 			UseCooldown(ColdBlood)
 		end
-		if Crackshot.known and BetweenTheEyes:Usable() and (Shadowmeld:Down() or Stealth:Up()) then
-			return BetweenTheEyes
+		if Crackshot.known and BetweenTheEyes:Usable(0, true) and Shadowmeld:Down() then
+			return Pool(BetweenTheEyes)
 		end
 		if Dispatch:Usable() then
 			return Dispatch
