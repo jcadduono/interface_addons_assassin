@@ -2525,7 +2525,7 @@ actions.cds+=/blade_flurry,if=(spell_targets>=2-talent.underhanded_upper_hand&!s
 # With Deft Maneuvers, use Blade Flurry on cooldown at 5+ targets, or at 3-4 targets if missing combo points equal to the amount given
 actions.cds+=/blade_flurry,if=talent.deft_maneuvers&!variable.finish_condition&(spell_targets>=3&combo_points.deficit=spell_targets+buff.broadside.up|spell_targets>=5)
 # Use Roll the Bones if reroll conditions are met, or with no buffs, or 2s before buffs expire with T31, or 7s before buffs expire with Vanish/Dance ready
-#actions.cds+=/roll_the_bones,if=rtb_buffs=0|rtb_buffs.max_remains<=2&set_bonus.tier31_4pc|(!talent.crackshot|buff.subterfuge.down)&(variable.rtb_reroll|rtb_buffs.max_remains<=7&(cooldown.shadow_dance.ready|cooldown.vanish.ready))
+actions.cds+=/roll_the_bones,if=rtb_buffs=0|rtb_buffs.max_remains<=2&set_bonus.tier31_4pc|(!talent.crackshot|buff.subterfuge.down&buff.shadow_dance.down)&(variable.rtb_reroll|rtb_buffs.max_remains<=7&(cooldown.shadow_dance.ready|cooldown.vanish.ready))
 # Use Keep it Rolling with at least 3 buffs (4 with T31)
 actions.cds+=/keep_it_rolling,if=!variable.rtb_reroll&rtb_buffs>=3+set_bonus.tier31_4pc&(buff.shadow_dance.down|rtb_buffs>=6)
 actions.cds+=/ghostly_strike
@@ -2562,7 +2562,7 @@ actions.cds+=/use_items,slots=trinket2,if=buff.between_the_eyes.up|trinket.2.has
 	if RollTheBones:Usable() and (
 		self.rtb_buffs == 0 or
 		(self.rtb_remains <= 2 and Player.set_bonus.t31 >= 4) or
-		((not Crackshot.known or Subterfuge:Down()) and (
+		((not Crackshot.known or Player.stealth_remains <= 0) and (
 			self.rtb_reroll or
 			(self.rtb_remains <= 7 and (ShadowDance:Ready() or (self.vanish_condition and Vanish:Ready())))
 		))
