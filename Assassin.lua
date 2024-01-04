@@ -1978,6 +1978,12 @@ function Shiv:EnergyCost()
 	return Ability.EnergyCost(self)
 end
 
+CountTheOdds.triggers = {
+	[Ambush] = true,
+	[SinisterStrike] = true,
+	[Dispatch] = true,
+}
+
 EchoingReprimand.finishers = {
 	[BetweenTheEyes] = true,
 	[BlackPowder] = true,
@@ -2392,7 +2398,7 @@ actions+=/variable,name=rtb_reroll,value=variable.rtb_reroll&rtb_buffs.longer=0|
 # Avoid rerolls when we will not have time remaining on the fight or add wave to recoup the opportunity cost of the global
 actions+=/variable,name=rtb_reroll,op=reset,if=!(raid_event.adds.remains>12|raid_event.adds.up&(raid_event.adds.in-raid_event.adds.remains)<6|target.time_to_die>12)|fight_remains<12
 ]]
-	self.rtb_remains = RollTheBones:Remains()
+	self.rtb_remains = RollTheBones:Remains(true)
 	self.rtb_buffs = RollTheBones:Stack()
 	self.rtb_will_lose = RollTheBones:WillLose()
 	if Target.boss and Target.timeToDie < 12 then
@@ -3608,7 +3614,7 @@ function Events:UNIT_SPELLCAST_SENT(unitId, destName, castGUID, spellId)
 	if not ability then
 		return
 	end
-	if RollTheBones.known and (ability == RollTheBones or (CountTheOdds.known and (ability == Ambush or ability == Dispatch))) then
+	if RollTheBones.known and (ability == RollTheBones or (CountTheOdds.known and CountTheOdds.triggers[ability])) then
 		RollTheBones.next_trigger = ability
 	end
 	if EchoingReprimand.known and EchoingReprimand.finishers[ability] and Player.combo_points.anima_charged[Player.combo_points.current] then
