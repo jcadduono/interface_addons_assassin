@@ -115,6 +115,18 @@ local function InitOpts()
 		},
 		priority_rotation = false,
 		vanish_solo = false,
+		rtb_values = {
+			enabled = false,
+			broadside = 10,
+			true_bearing = 11,
+			ruthless_precision = 9,
+			skull_and_crossbones = 8,
+			buried_treasure = 4,
+			grand_melee = 3,
+			grand_melee_aoe = 2,
+			threshold = 16,
+			loaded_dice = 7,
+		},
 	})
 end
 
@@ -2385,6 +2397,9 @@ end
 
 APL[SPEC.OUTLAW].rtb = function(self)
 --[[
+# Custom value reroll
+actions+=/variable,name=rtb_value,value=(buff.broadside.up*10)+(buff.true_bearing.up*11)+(buff.ruthless_precision.up*9)+(buff.skull_and_crossbones.up*8)+(buff.buried_treasure.up*4)+(buff.grand_melee.up*(3+((spell_targets.blade_flurry>1)*2)))
+actions+=/variable,name=rtb_reroll,value=variable.rtb_value<(16+(7*buff.loaded_dice.up))
 # Default Roll the Bones reroll rule: reroll for any buffs that aren't Buried Treasure, excluding Grand Melee in single target
 actions+=/variable,name=rtb_reroll,value=rtb_buffs.will_lose=(rtb_buffs.will_lose.buried_treasure+rtb_buffs.will_lose.grand_melee&spell_targets.blade_flurry<2&raid_event.adds.in>10)
 # Crackshot builds without T31 should reroll for True Bearing (or Broadside without Hidden Opportunity) if we won't lose over 1 buff
@@ -2403,6 +2418,18 @@ actions+=/variable,name=rtb_reroll,op=reset,if=!(raid_event.adds.remains>12|raid
 	self.rtb_will_lose = RollTheBones:WillLose()
 	if Target.boss and Target.timeToDie < 12 then
 		self.rtb_reroll = false
+	elseif Opt.rtb_values.enabled then
+		self.rtb_value = (
+			(Broadside:Up() and Opt.rtb_values.broadside or 0) +
+			(TrueBearing:Up() and Opt.rtb_values.true_bearing or 0) +
+			(RuthlessPrecision:Up() and Opt.rtb_values.ruthless_precision or 0) +
+			(SkullAndCrossbones:Up() and Opt.rtb_values.skull_and_crossbones or 0) +
+			(BuriedTreasure:Up() and Opt.rtb_values.buried_treasure or 0) +
+			(GrandMelee:Up() and (
+				Opt.rtb_values.grand_melee + (Player.enemies > 1 and Opt.rtb_values.grand_melee_aoe or 0)
+			) or 0)
+		)
+		self.rtb_reroll = self.rtb_value < (Opt.rtb_values.threshold + (LoadedDice:Up() and Opt.rtb_values.loaded_dice or 0))
 	elseif Crackshot.known then
 		if Player.set_bonus.t31 >= 4 then
 			self.rtb_reroll = self.rtb_will_lose <= (1 + (LoadedDice:Up() and 1 or 0))
@@ -4093,6 +4120,50 @@ SlashCmdList[ADDON] = function(msg, editbox)
 		end
 		return Status('Use Vanish and Shadowmeld while solo (off by default, use for training dummies)', Opt.vanish_solo)
 	end
+	if msg[1] == 'rtb' or startsWith(msg[1], 'roll') then
+		if msg[2] then
+			if msg[2] == 'on' or msg[2] == 'off' then
+				Opt.rtb_values.enabled = msg[2] == 'on'
+				return Status(RollTheBones.name .. ' value-based rerolls', Opt.rtb_values.enabled)
+			end
+			if startsWith(msg[2], 'th') or startsWith(msg[2], 'va') then
+				Opt.rtb_values.threshold = clamp(tonumber(msg[3]) or 16, 0, 50)
+				if msg[4] then
+					Opt.rtb_values.loaded_dice = clamp(tonumber(msg[4]) or 7, 0, 50)
+				end
+				return Status('Reroll if total value of current buffs is below', Opt.rtb_values.threshold .. ' + ' .. Opt.rtb_values.loaded_dice, '(' .. LoadedDice.name .. ' modifier)')
+			end
+			if startsWith(msg[2], 'br') then
+				Opt.rtb_values.broadside = clamp(tonumber(msg[3]) or 10, 0, 20)
+				return Status(Broadside.name .. ' value', Opt.rtb_values.broadside)
+			end
+			if startsWith(msg[2], 'tr') then
+				Opt.rtb_values.true_bearing = clamp(tonumber(msg[3]) or 11, 0, 20)
+				return Status(TrueBearing.name .. ' value', Opt.rtb_values.true_bearing)
+			end
+			if startsWith(msg[2], 'ru') then
+				Opt.rtb_values.ruthless_precision = clamp(tonumber(msg[3]) or 9, 0, 20)
+				return Status(RuthlessPrecision.name .. ' value', Opt.rtb_values.ruthless_precision)
+			end
+			if startsWith(msg[2], 'sk') then
+				Opt.rtb_values.skull_and_crossbones = clamp(tonumber(msg[3]) or 8, 0, 20)
+				return Status(SkullAndCrossbones.name .. ' value', Opt.rtb_values.skull_and_crossbones)
+			end
+			if startsWith(msg[2], 'bu') then
+				Opt.rtb_values.buried_treasure = clamp(tonumber(msg[3]) or 4, 0, 20)
+				return Status(BuriedTreasure.name .. ' value', Opt.rtb_values.buried_treasure)
+			end
+			if startsWith(msg[2], 'gr') then
+				Opt.rtb_values.grand_melee = clamp(tonumber(msg[3]) or 3, 0, 20)
+				if msg[4] then
+					Opt.rtb_values.grand_melee_aoe = clamp(tonumber(msg[4]) or 2, 0, 20)
+				end
+				return Status(GrandMelee.name .. ' value', Opt.rtb_values.grand_melee .. ' + ' .. Opt.rtb_values.grand_melee_aoe, '(aoe modifier)')
+			end
+		end
+		Status(RollTheBones.name .. ' value-based rerolls', Opt.rtb_values.enabled)
+		return Status('Possible configurable options', '|cFF00C000on|r/|cFFC00000off|r/|cFFFFD000threshold|r/|cFFFFD000broadside|r/|cFFFFD000true|r/|cFFFFD000ruthless|r/|cFFFFD000skull|r/|cFFFFD000buried|r/|cFFFFD000grand|r')
+	end
 	if msg[1] == 'reset' then
 		assassinPanel:ClearAllPoints()
 		assassinPanel:SetPoint('CENTER', 0, -169)
@@ -4126,6 +4197,7 @@ SlashCmdList[ADDON] = function(msg, editbox)
 		'poisons |cFF00C000on|r/|cFFC00000off|r - show a reminder for poisons (5 minutes outside combat)',
 		'priority |cFF00C000on|r/|cFFC00000off|r - use "priority rotation" mode (off by default)',
 		'vanish |cFF00C000on|r/|cFFC00000off|r - use Vanish and Shadowmeld while solo (off by default)',
+		'rtb - run this command to see options for custom ' .. RollTheBones.name ..  ' reroll values',
 		'|cFFFFD000reset|r - reset the location of the ' .. ADDON .. ' UI to default',
 	} do
 		print('  ' .. SLASH_Assassin1 .. ' ' .. cmd)
