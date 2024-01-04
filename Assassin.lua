@@ -2597,7 +2597,7 @@ actions.finish+=/dispatch
 ]]
 	if BetweenTheEyes:Usable(Player:EnergyTimeToMax(50), true) and (
 		(not Crackshot.known and (not GreenskinsWickers.known or GreenskinsWickers:Down()) and (BetweenTheEyes:Remains() < 4 or ImprovedBetweenTheEyes.known or GreenskinsWickers.known or Player.set_bonus.t30 >= 4)) or
-		(Crackshot.known and ((not self.vanish_condition or not Vanish:Ready(45)) and not ShadowDance:Ready(12)))
+		(Crackshot.known and ((not self.vanish_condition or not Vanish:Ready(45)) and not ShadowDance:Ready(12)) and (Player.enemies > 1 or Target.timeToDie > 12 or Target.boss))
 	) then
 		return Pool(BetweenTheEyes)
 	end
