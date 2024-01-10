@@ -2573,7 +2573,7 @@ actions.cds+=/use_items,slots=trinket2,if=buff.between_the_eyes.up|trinket.2.has
 	if self.use_cds and KeepItRolling:Usable() and not self.rtb_reroll and self.rtb_buffs >= (3 + (Player.set_bonus.t31 >= 4 and 1 or 0)) and (ShadowDance:Down() or self.rtb_buffs >= 6) then
 		return UseCooldown(KeepItRolling)
 	end
-	if self.use_cds and GhostlyStrike:Usable() then
+	if self.use_cds and GhostlyStrike:Usable() and Stealth:Down() and Shadowmeld:Down() then
 		return UseCooldown(GhostlyStrike)
 	end
 	if self.use_cds and Sepsis:Usable() and (
