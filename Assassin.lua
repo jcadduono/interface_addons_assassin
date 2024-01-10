@@ -1681,6 +1681,7 @@ function Player:Update()
 	self.haste_factor = 1 / (1 + UnitSpellHaste('player') / 100)
 	start, duration = GetSpellCooldown(61304)
 	self.gcd_remains = start > 0 and duration - (self.ctime - start) or 0
+	self.gcd = 1.0 - ((AdrenalineRush.known and AdrenalineRush:Up()) and 0.2 or 0)
 	_, _, _, start, ends, _, _, _, spellId = UnitCastingInfo('player')
 	if spellId then
 		self.cast.ability = Abilities.bySpellId[spellId]
