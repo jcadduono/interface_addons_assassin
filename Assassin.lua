@@ -1,9 +1,23 @@
 local ADDON = 'Assassin'
+local ADDON_PATH = 'Interface\\AddOns\\' .. ADDON .. '\\'
+
+BINDING_CATEGORY_ASSASSIN = ADDON
+BINDING_NAME_ASSASSIN_TARGETMORE = "Toggle Targets +"
+BINDING_NAME_ASSASSIN_TARGETLESS = "Toggle Targets -"
+BINDING_NAME_ASSASSIN_TARGET1 = "Set Targets to 1"
+BINDING_NAME_ASSASSIN_TARGET2 = "Set Targets to 2"
+BINDING_NAME_ASSASSIN_TARGET3 = "Set Targets to 3"
+BINDING_NAME_ASSASSIN_TARGET4 = "Set Targets to 4"
+BINDING_NAME_ASSASSIN_TARGET5 = "Set Targets to 5+"
+
+local function log(...)
+	print(ADDON, '-', ...)
+end
+
 if select(2, UnitClass('player')) ~= 'ROGUE' then
-	DisableAddOn(ADDON)
+	log('[|cFFFF0000Error|r]', 'Not loading because you are not the correct class! Consider disabling', ADDON, 'for this character.')
 	return
 end
-local ADDON_PATH = 'Interface\\AddOns\\' .. ADDON .. '\\'
 
 -- reference heavily accessed global functions from local scope for performance
 local min = math.min
@@ -24,6 +38,7 @@ local UnitHealth = _G.UnitHealth
 local UnitHealthMax = _G.UnitHealthMax
 local UnitPower = _G.UnitPower
 local UnitPowerMax = _G.UnitPowerMax
+local UnitSpellHaste = _G.UnitSpellHaste
 -- end reference global functions
 
 -- useful functions
@@ -47,7 +62,6 @@ Assassin = {}
 local Opt -- use this as a local table reference to Assassin
 
 SLASH_Assassin1, SLASH_Assassin2 = '/ass', '/assassin'
-BINDING_HEADER_ASSASSIN = ADDON
 
 local function InitOpts()
 	local function SetDefaults(t, ref)
@@ -278,135 +292,6 @@ local Target = {
 	estimated_range = 30,
 }
 
-local assassinPanel = CreateFrame('Frame', 'assassinPanel', UIParent)
-assassinPanel:SetPoint('CENTER', 0, -169)
-assassinPanel:SetFrameStrata('BACKGROUND')
-assassinPanel:SetSize(64, 64)
-assassinPanel:SetMovable(true)
-assassinPanel:SetUserPlaced(true)
-assassinPanel:RegisterForDrag('LeftButton')
-assassinPanel:SetScript('OnDragStart', assassinPanel.StartMoving)
-assassinPanel:SetScript('OnDragStop', assassinPanel.StopMovingOrSizing)
-assassinPanel:Hide()
-assassinPanel.icon = assassinPanel:CreateTexture(nil, 'BACKGROUND')
-assassinPanel.icon:SetAllPoints(assassinPanel)
-assassinPanel.icon:SetTexCoord(0.05, 0.95, 0.05, 0.95)
-assassinPanel.border = assassinPanel:CreateTexture(nil, 'ARTWORK')
-assassinPanel.border:SetAllPoints(assassinPanel)
-assassinPanel.border:SetTexture(ADDON_PATH .. 'border.blp')
-assassinPanel.border:Hide()
-assassinPanel.dimmer = assassinPanel:CreateTexture(nil, 'BORDER')
-assassinPanel.dimmer:SetAllPoints(assassinPanel)
-assassinPanel.dimmer:SetColorTexture(0, 0, 0, 0.6)
-assassinPanel.dimmer:Hide()
-assassinPanel.swipe = CreateFrame('Cooldown', nil, assassinPanel, 'CooldownFrameTemplate')
-assassinPanel.swipe:SetAllPoints(assassinPanel)
-assassinPanel.swipe:SetDrawBling(false)
-assassinPanel.swipe:SetDrawEdge(false)
-assassinPanel.text = CreateFrame('Frame', nil, assassinPanel)
-assassinPanel.text:SetAllPoints(assassinPanel)
-assassinPanel.text.tl = assassinPanel.text:CreateFontString(nil, 'OVERLAY')
-assassinPanel.text.tl:SetFont('Fonts\\FRIZQT__.TTF', 12, 'OUTLINE')
-assassinPanel.text.tl:SetPoint('TOPLEFT', assassinPanel, 'TOPLEFT', 2.5, -3)
-assassinPanel.text.tl:SetJustifyH('LEFT')
-assassinPanel.text.tr = assassinPanel.text:CreateFontString(nil, 'OVERLAY')
-assassinPanel.text.tr:SetFont('Fonts\\FRIZQT__.TTF', 12, 'OUTLINE')
-assassinPanel.text.tr:SetPoint('TOPRIGHT', assassinPanel, 'TOPRIGHT', -2.5, -3)
-assassinPanel.text.tr:SetJustifyH('RIGHT')
-assassinPanel.text.bl = assassinPanel.text:CreateFontString(nil, 'OVERLAY')
-assassinPanel.text.bl:SetFont('Fonts\\FRIZQT__.TTF', 12, 'OUTLINE')
-assassinPanel.text.bl:SetPoint('BOTTOMLEFT', assassinPanel, 'BOTTOMLEFT', 2.5, 3)
-assassinPanel.text.bl:SetJustifyH('LEFT')
-assassinPanel.text.br = assassinPanel.text:CreateFontString(nil, 'OVERLAY')
-assassinPanel.text.br:SetFont('Fonts\\FRIZQT__.TTF', 12, 'OUTLINE')
-assassinPanel.text.br:SetPoint('BOTTOMRIGHT', assassinPanel, 'BOTTOMRIGHT', -2.5, 3)
-assassinPanel.text.br:SetJustifyH('RIGHT')
-assassinPanel.text.center = assassinPanel.text:CreateFontString(nil, 'OVERLAY')
-assassinPanel.text.center:SetFont('Fonts\\FRIZQT__.TTF', 12, 'OUTLINE')
-assassinPanel.text.center:SetAllPoints(assassinPanel.text)
-assassinPanel.text.center:SetJustifyH('CENTER')
-assassinPanel.text.center:SetJustifyV('CENTER')
-assassinPanel.button = CreateFrame('Button', nil, assassinPanel)
-assassinPanel.button:SetAllPoints(assassinPanel)
-assassinPanel.button:RegisterForClicks('LeftButtonDown', 'RightButtonDown', 'MiddleButtonDown')
-local assassinPreviousPanel = CreateFrame('Frame', 'assassinPreviousPanel', UIParent)
-assassinPreviousPanel:SetFrameStrata('BACKGROUND')
-assassinPreviousPanel:SetSize(64, 64)
-assassinPreviousPanel:SetMovable(true)
-assassinPreviousPanel:SetUserPlaced(true)
-assassinPreviousPanel:RegisterForDrag('LeftButton')
-assassinPreviousPanel:SetScript('OnDragStart', assassinPreviousPanel.StartMoving)
-assassinPreviousPanel:SetScript('OnDragStop', assassinPreviousPanel.StopMovingOrSizing)
-assassinPreviousPanel:Hide()
-assassinPreviousPanel.icon = assassinPreviousPanel:CreateTexture(nil, 'BACKGROUND')
-assassinPreviousPanel.icon:SetAllPoints(assassinPreviousPanel)
-assassinPreviousPanel.icon:SetTexCoord(0.05, 0.95, 0.05, 0.95)
-assassinPreviousPanel.border = assassinPreviousPanel:CreateTexture(nil, 'ARTWORK')
-assassinPreviousPanel.border:SetAllPoints(assassinPreviousPanel)
-assassinPreviousPanel.border:SetTexture(ADDON_PATH .. 'border.blp')
-local assassinCooldownPanel = CreateFrame('Frame', 'assassinCooldownPanel', UIParent)
-assassinCooldownPanel:SetFrameStrata('BACKGROUND')
-assassinCooldownPanel:SetSize(64, 64)
-assassinCooldownPanel:SetMovable(true)
-assassinCooldownPanel:SetUserPlaced(true)
-assassinCooldownPanel:RegisterForDrag('LeftButton')
-assassinCooldownPanel:SetScript('OnDragStart', assassinCooldownPanel.StartMoving)
-assassinCooldownPanel:SetScript('OnDragStop', assassinCooldownPanel.StopMovingOrSizing)
-assassinCooldownPanel:Hide()
-assassinCooldownPanel.icon = assassinCooldownPanel:CreateTexture(nil, 'BACKGROUND')
-assassinCooldownPanel.icon:SetAllPoints(assassinCooldownPanel)
-assassinCooldownPanel.icon:SetTexCoord(0.05, 0.95, 0.05, 0.95)
-assassinCooldownPanel.border = assassinCooldownPanel:CreateTexture(nil, 'ARTWORK')
-assassinCooldownPanel.border:SetAllPoints(assassinCooldownPanel)
-assassinCooldownPanel.border:SetTexture(ADDON_PATH .. 'border.blp')
-assassinCooldownPanel.dimmer = assassinCooldownPanel:CreateTexture(nil, 'BORDER')
-assassinCooldownPanel.dimmer:SetAllPoints(assassinCooldownPanel)
-assassinCooldownPanel.dimmer:SetColorTexture(0, 0, 0, 0.6)
-assassinCooldownPanel.dimmer:Hide()
-assassinCooldownPanel.swipe = CreateFrame('Cooldown', nil, assassinCooldownPanel, 'CooldownFrameTemplate')
-assassinCooldownPanel.swipe:SetAllPoints(assassinCooldownPanel)
-assassinCooldownPanel.swipe:SetDrawBling(false)
-assassinCooldownPanel.swipe:SetDrawEdge(false)
-assassinCooldownPanel.text = assassinCooldownPanel:CreateFontString(nil, 'OVERLAY')
-assassinCooldownPanel.text:SetFont('Fonts\\FRIZQT__.TTF', 12, 'OUTLINE')
-assassinCooldownPanel.text:SetAllPoints(assassinCooldownPanel)
-assassinCooldownPanel.text:SetJustifyH('CENTER')
-assassinCooldownPanel.text:SetJustifyV('CENTER')
-local assassinInterruptPanel = CreateFrame('Frame', 'assassinInterruptPanel', UIParent)
-assassinInterruptPanel:SetFrameStrata('BACKGROUND')
-assassinInterruptPanel:SetSize(64, 64)
-assassinInterruptPanel:SetMovable(true)
-assassinInterruptPanel:SetUserPlaced(true)
-assassinInterruptPanel:RegisterForDrag('LeftButton')
-assassinInterruptPanel:SetScript('OnDragStart', assassinInterruptPanel.StartMoving)
-assassinInterruptPanel:SetScript('OnDragStop', assassinInterruptPanel.StopMovingOrSizing)
-assassinInterruptPanel:Hide()
-assassinInterruptPanel.icon = assassinInterruptPanel:CreateTexture(nil, 'BACKGROUND')
-assassinInterruptPanel.icon:SetAllPoints(assassinInterruptPanel)
-assassinInterruptPanel.icon:SetTexCoord(0.05, 0.95, 0.05, 0.95)
-assassinInterruptPanel.border = assassinInterruptPanel:CreateTexture(nil, 'ARTWORK')
-assassinInterruptPanel.border:SetAllPoints(assassinInterruptPanel)
-assassinInterruptPanel.border:SetTexture(ADDON_PATH .. 'border.blp')
-assassinInterruptPanel.swipe = CreateFrame('Cooldown', nil, assassinInterruptPanel, 'CooldownFrameTemplate')
-assassinInterruptPanel.swipe:SetAllPoints(assassinInterruptPanel)
-assassinInterruptPanel.swipe:SetDrawBling(false)
-assassinInterruptPanel.swipe:SetDrawEdge(false)
-local assassinExtraPanel = CreateFrame('Frame', 'assassinExtraPanel', UIParent)
-assassinExtraPanel:SetFrameStrata('BACKGROUND')
-assassinExtraPanel:SetSize(64, 64)
-assassinExtraPanel:SetMovable(true)
-assassinExtraPanel:SetUserPlaced(true)
-assassinExtraPanel:RegisterForDrag('LeftButton')
-assassinExtraPanel:SetScript('OnDragStart', assassinExtraPanel.StartMoving)
-assassinExtraPanel:SetScript('OnDragStop', assassinExtraPanel.StopMovingOrSizing)
-assassinExtraPanel:Hide()
-assassinExtraPanel.icon = assassinExtraPanel:CreateTexture(nil, 'BACKGROUND')
-assassinExtraPanel.icon:SetAllPoints(assassinExtraPanel)
-assassinExtraPanel.icon:SetTexCoord(0.05, 0.95, 0.05, 0.95)
-assassinExtraPanel.border = assassinExtraPanel:CreateTexture(nil, 'ARTWORK')
-assassinExtraPanel.border:SetAllPoints(assassinExtraPanel)
-assassinExtraPanel.border:SetTexture(ADDON_PATH .. 'border.blp')
-
 -- Start AoE
 
 Player.target_modes = {
@@ -617,7 +502,7 @@ function Ability:Usable(seconds, pool)
 	return self:Ready(seconds)
 end
 
-function Ability:Remains(offGCD)
+function Ability:Remains()
 	if self:Casting() or self:Traveling() > 0 then
 		return self:Duration()
 	end
@@ -630,7 +515,7 @@ function Ability:Remains(offGCD)
 			if expires == 0 then
 				return 600 -- infinite duration
 			end
-			return max(0, expires - Player.ctime - (offGCD and 0 or Player.execute_remains))
+			return max(0, expires - Player.ctime - (self.off_gcd and 0 or Player.execute_remains))
 		end
 	end
 	return 0
@@ -893,6 +778,9 @@ end
 
 function Ability:CastSuccess(dstGUID)
 	self.last_used = Player.time
+	if self.ignore_cast then
+		return
+	end
 	Player.last_ability = self
 	if self.triggers_gcd then
 		Player.previous_gcd[10] = nil
@@ -1373,6 +1261,7 @@ function InventoryItem:Add(itemId)
 		name = name,
 		icon = icon,
 		can_use = false,
+		off_gcd = true,
 	}
 	setmetatable(item, self)
 	inventoryItems[#inventoryItems + 1] = item
@@ -1396,13 +1285,16 @@ function InventoryItem:Count()
 end
 
 function InventoryItem:Cooldown()
-	local startTime, duration
+	local start, duration
 	if self.equip_slot then
-		startTime, duration = GetInventoryItemCooldown('player', self.equip_slot)
+		start, duration = GetInventoryItemCooldown('player', self.equip_slot)
 	else
-		startTime, duration = GetItemCooldown(self.itemId)
+		start, duration = GetItemCooldown(self.itemId)
 	end
-	return startTime == 0 and 0 or duration - (Player.ctime - startTime)
+	if start == 0 then
+		return 0
+	end
+	return max(0, duration - (Player.ctime - start) - (self.off_gcd and 0 or Player.execute_remains))
 end
 
 function InventoryItem:Ready(seconds)
@@ -1430,6 +1322,7 @@ local Trinket1 = InventoryItem:Add(0)
 local Trinket2 = InventoryItem:Add(0)
 Trinket.BeaconToTheBeyond = InventoryItem:Add(203963)
 Trinket.BeaconToTheBeyond.cooldown_duration = 150
+Trinket.BeaconToTheBeyond.off_gcd = false
 Trinket.DragonfireBombDispenser = InventoryItem:Add(202610)
 Trinket.ElementiumPocketAnvil = InventoryItem:Add(202617)
 -- End Inventory Items
@@ -1694,7 +1587,7 @@ function Player:Update()
 		self.cast.ends = 0
 		self.cast.remains = 0
 	end
-	self.execute_remains = max(self.cast.ends - self.ctime, self.gcd_remains)
+	self.execute_remains = max(self.cast.remains, self.gcd_remains)
 	self.energy.regen = GetPowerRegenForPowerType(3)
 	self.energy.max = UnitPowerMax('player', 3)
 	self.energy.current = UnitPower('player', 3) + (self.energy.regen * self.execute_remains)
@@ -1710,7 +1603,7 @@ function Player:Update()
 	self.swing.mh.remains = max(0, self.swing.mh.last + self.swing.mh.speed - self.time)
 	self.swing.oh.remains = max(0, self.swing.oh.last + self.swing.oh.speed - self.time)
 	self.moving = GetUnitSpeed('player') ~= 0
-	self.stealth_remains = max(ShadowDance.known and ShadowDance:Remains() or 0, (Subterfuge.known or UnderHandedUpperhand.known) and Subterfuge:Remains() or 0, Sepsis.known and Sepsis.buff:Remains() or 0)
+	self.stealth_remains = max(ShadowDance.known and ShadowDance:Remains() or 0, (Subterfuge.known or UnderhandedUpperHand.known) and Subterfuge:Remains() or 0, Sepsis.known and Sepsis.buff:Remains() or 0)
 	self.stealthed_nomeld = self.stealth_remains > 0 or Stealth:Up() or Vanish:Up()
 	self.stealthed = self.stealthed_nomeld or (Shadowmeld.known and Shadowmeld:Up())
 	self:UpdateThreat()
@@ -3178,7 +3071,7 @@ function UI:CreateOverlayGlows()
 			end
 		end
 	end
-	UI:UpdateGlowColorAndScale()
+	self:UpdateGlowColorAndScale()
 end
 
 function UI:UpdateGlows()
@@ -3214,6 +3107,18 @@ end
 
 function UI:UpdateDraggable()
 	local draggable = not (Opt.locked or Opt.snap or Opt.aoe)
+	assassinPanel:SetMovable(not Opt.snap)
+	assassinPreviousPanel:SetMovable(not Opt.snap)
+	assassinCooldownPanel:SetMovable(not Opt.snap)
+	assassinInterruptPanel:SetMovable(not Opt.snap)
+	assassinExtraPanel:SetMovable(not Opt.snap)
+	if not Opt.snap then
+		assassinPanel:SetUserPlaced(true)
+		assassinPreviousPanel:SetUserPlaced(true)
+		assassinCooldownPanel:SetUserPlaced(true)
+		assassinInterruptPanel:SetUserPlaced(true)
+		assassinExtraPanel:SetUserPlaced(true)
+	end
 	assassinPanel:EnableMouse(draggable or Opt.aoe)
 	assassinPanel.button:SetShown(Opt.aoe)
 	assassinPreviousPanel:EnableMouse(draggable)
@@ -3329,7 +3234,13 @@ function UI:Disappear()
 	Player.cd = nil
 	Player.interrupt = nil
 	Player.extra = nil
-	UI:UpdateGlows()
+	self:UpdateGlows()
+end
+
+function UI:Reset()
+	assassinPanel:ClearAllPoints()
+	assassinPanel:SetPoint('CENTER', 0, -169)
+	self:SnapAllPanels()
 end
 
 function UI:UpdateDisplay()
@@ -3458,12 +3369,12 @@ function Events:ADDON_LOADED(name)
 		UI:UpdateAlpha()
 		UI:UpdateScale()
 		if firstRun then
-			print('It looks like this is your first time running ' .. ADDON .. ', why don\'t you take some time to familiarize yourself with the commands?')
-			print('Type |cFFFFD000' .. SLASH_Assassin1 .. '|r for a list of commands.')
+			log('It looks like this is your first time running ' .. ADDON .. ', why don\'t you take some time to familiarize yourself with the commands?')
+			log('Type |cFFFFD000' .. SLASH_Assassin1 .. '|r for a list of commands.')
 			UI:SnapAllPanels()
 		end
 		if UnitLevel('player') < 10 then
-			print('[|cFFFFD000Warning|r] ' .. ADDON .. ' is not designed for players under level 10, and almost certainly will not operate properly!')
+			log('[|cFFFFD000Warning|r]', ADDON, 'is not designed for players under level 10, and almost certainly will not operate properly!')
 		end
 	end
 end
@@ -3540,7 +3451,7 @@ CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellS
 
 	local ability = spellId and Abilities.bySpellId[spellId]
 	if not ability then
-		--print(format('EVENT %s TRACK CHECK FOR UNKNOWN %s ID %d', event, type(spellName) == 'string' and spellName or 'Unknown', spellId or 0))
+		--log(format('EVENT %s TRACK CHECK FOR UNKNOWN %s ID %d', event, type(spellName) == 'string' and spellName or 'Unknown', spellId or 0))
 		return
 	end
 
@@ -3571,13 +3482,6 @@ CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellS
 			end
 		end
 		return -- ignore buffs beyond here
-	end
-	if Opt.auto_aoe then
-		if event == 'SPELL_MISSED' and (missType == 'EVADE' or (missType == 'IMMUNE' and not ability.ignore_immune)) then
-			AutoAoe:Remove(dstGUID)
-		elseif ability.auto_aoe and (event == ability.auto_aoe.trigger or ability.auto_aoe.trigger == 'SPELL_AURA_APPLIED' and event == 'SPELL_AURA_REFRESH') then
-			ability:RecordTargetHit(dstGUID)
-		end
 	end
 	if event == 'SPELL_DAMAGE' or event == 'SPELL_ABSORBED' or event == 'SPELL_MISSED' or event == 'SPELL_AURA_APPLIED' or event == 'SPELL_AURA_REFRESH' then
 		ability:CastLanded(dstGUID, event, missType)
@@ -3753,7 +3657,6 @@ function Events:PLAYER_SPECIALIZATION_CHANGED(unitId)
 	Player:Update()
 end
 
-
 function Events:TRAIT_CONFIG_UPDATED()
 	Events:PLAYER_SPECIALIZATION_CHANGED('player')
 end
@@ -3850,7 +3753,7 @@ local function Status(desc, opt, ...)
 	else
 		opt_view = opt and '|cFF00C000On|r' or '|cFFC00000Off|r'
 	end
-	print(ADDON, '-', desc .. ':', opt_view, ...)
+	log(desc .. ':', opt_view, ...)
 end
 
 SlashCmdList[ADDON] = function(msg, editbox)
@@ -3876,7 +3779,7 @@ SlashCmdList[ADDON] = function(msg, editbox)
 			else
 				Opt.snap = false
 				Opt.locked = false
-				assassinPanel:ClearAllPoints()
+				UI:Reset()
 			end
 			UI:UpdateDraggable()
 			UI.OnResourceFrameShow()
@@ -4166,9 +4069,7 @@ SlashCmdList[ADDON] = function(msg, editbox)
 		return Status('Possible configurable options', '|cFF00C000on|r/|cFFC00000off|r/|cFFFFD000threshold|r/|cFFFFD000broadside|r/|cFFFFD000true|r/|cFFFFD000ruthless|r/|cFFFFD000skull|r/|cFFFFD000buried|r/|cFFFFD000grand|r')
 	end
 	if msg[1] == 'reset' then
-		assassinPanel:ClearAllPoints()
-		assassinPanel:SetPoint('CENTER', 0, -169)
-		UI:SnapAllPanels()
+		UI:Reset()
 		return Status('Position has been reset to', 'default')
 	end
 	print(ADDON, '(version: |cFFFFD000' .. GetAddOnMetadata(ADDON, 'Version') .. '|r) - Commands:')
