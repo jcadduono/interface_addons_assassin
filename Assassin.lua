@@ -122,6 +122,7 @@ local function InitOpts()
 		cd_ttd = 8,
 		pot = false,
 		trinket = true,
+		heal = 60,
 		poisons = true,
 		last_poison = {
 			lethal = false,
@@ -214,15 +215,11 @@ local Player = {
 	execute_remains = 0,
 	haste_factor = 1,
 	moving = false,
+	movement_speed = 100,
 	health = {
 		current = 0,
 		max = 100,
 		pct = 100,
-	},
-	cast = {
-		start = 0,
-		ends = 0,
-		remains = 0,
 	},
 	energy = {
 		current = 0,
@@ -237,6 +234,11 @@ local Player = {
 		deficit = 0,
 		effective = 0,
 		anima_charged = {},
+	},
+	cast = {
+		start = 0,
+		ends = 0,
+		remains = 0,
 	},
 	threat = {
 		status = 0,
@@ -260,6 +262,7 @@ local Player = {
 		t29 = 0, -- Vault Delver's Toolkit
 		t30 = 0, -- Lurking Specter's Shadeweave
 		t31 = 0, -- Lucid Shadewalker's Silence
+		t32 = 0, -- Lurking Specter's Shadeweave (Awakened)
 	},
 	previous_gcd = {},-- list of previous GCD abilities
 	item_use_blacklist = { -- list of item IDs with on-use effects we should mark unusable
@@ -280,7 +283,6 @@ local Player = {
 -- current target information
 local Target = {
 	boss = false,
-	guid = 0,
 	health = {
 		current = 0,
 		loss_per_sec = 0,
@@ -290,6 +292,16 @@ local Target = {
 	},
 	hostile = false,
 	estimated_range = 30,
+}
+
+-- target dummy unit IDs (count these units as bosses)
+Target.Dummies = {
+	[194643] = true,
+	[194648] = true,
+	[198594] = true,
+	[194644] = true,
+	[194649] = true,
+	[197833] = true,
 }
 
 -- Start AoE
@@ -705,12 +717,12 @@ function Ability:CastTime()
 	return castTime / 1000
 end
 
-function Ability:CastRegen()
+function Ability:CastEnergyRegen()
 	return Player.energy.regen * self:CastTime() - self:EnergyCost()
 end
 
 function Ability:WontCapEnergy(reduction)
-	return (Player.energy.current + self:CastRegen()) < (Player.energy.max - (reduction or 5))
+	return (Player.energy.current + self:CastEnergyRegen()) < (Player.energy.max - (reduction or 5))
 end
 
 function Ability:Previous(n)
@@ -875,7 +887,7 @@ function Ability:ApplyAura(guid)
 	return aura
 end
 
-function Ability:RefreshAura(guid)
+function Ability:RefreshAura(guid, extend)
 	if AutoAoe.blacklist[guid] then
 		return
 	end
@@ -884,14 +896,14 @@ function Ability:RefreshAura(guid)
 		return self:ApplyAura(guid)
 	end
 	local duration = self:Duration()
-	aura.expires = max(aura.expires, Player.time + min(duration * (self.no_pandemic and 1.0 or 1.3), (aura.expires - Player.time) + duration))
+	aura.expires = max(aura.expires, Player.time + min(duration * (self.no_pandemic and 1.0 or 1.3), (aura.expires - Player.time) + (extend or duration)))
 	return aura
 end
 
-function Ability:RefreshAuraAll()
+function Ability:RefreshAuraAll(extend)
 	local duration = self:Duration()
 	for guid, aura in next, self.aura_targets do
-		aura.expires = max(aura.expires, Player.time + min(duration * (self.no_pandemic and 1.0 or 1.3), (aura.expires - Player.time) + duration))
+		aura.expires = max(aura.expires, Player.time + min(duration * (self.no_pandemic and 1.0 or 1.3), (aura.expires - Player.time) + (extend or duration)))
 	end
 end
 
@@ -1493,8 +1505,6 @@ function Player:UpdatePoisons()
 end
 
 function Player:UpdateKnown()
-	self.combo_points.max = UnitPowerMax('player', 4)
-
 	local node
 	local configId = C_ClassTalents.GetActiveConfigID()
 	for _, ability in next, Abilities.all do
@@ -1564,8 +1574,8 @@ function Player:UpdateThreat()
 end
 
 function Player:Update()
-	local _, start, ends, duration, spellId, speed_mh, speed_oh
-	self.main =  nil
+	local _, start, ends, duration, spellId, speed, max_speed, speed_mh, speed_oh
+	self.main = nil
 	self.cd = nil
 	self.interrupt = nil
 	self.extra = nil
@@ -1589,7 +1599,6 @@ function Player:Update()
 	end
 	self.execute_remains = max(self.cast.remains, self.gcd_remains)
 	self.energy.regen = GetPowerRegenForPowerType(3)
-	self.energy.max = UnitPowerMax('player', 3)
 	self.energy.current = UnitPower('player', 3) + (self.energy.regen * self.execute_remains)
 	self.energy.current = clamp(self.energy.current, 0, self.energy.max)
 	self.energy.deficit = self.energy.max - self.energy.current
@@ -1602,10 +1611,9 @@ function Player:Update()
 	self.swing.oh.speed = speed_oh or 0
 	self.swing.mh.remains = max(0, self.swing.mh.last + self.swing.mh.speed - self.time)
 	self.swing.oh.remains = max(0, self.swing.oh.last + self.swing.oh.speed - self.time)
-	self.moving = GetUnitSpeed('player') ~= 0
-	self.stealth_remains = max(ShadowDance.known and ShadowDance:Remains() or 0, (Subterfuge.known or UnderhandedUpperHand.known) and Subterfuge:Remains() or 0, Sepsis.known and Sepsis.buff:Remains() or 0)
-	self.stealthed_nomeld = self.stealth_remains > 0 or Stealth:Up() or Vanish:Up()
-	self.stealthed = self.stealthed_nomeld or (Shadowmeld.known and Shadowmeld:Up())
+	speed, max_speed = GetUnitSpeed('player')
+	self.moving = speed ~= 0
+	self.movement_speed = max_speed / 7 * 100
 	self:UpdateThreat()
 
 	trackAuras:Purge()
@@ -1616,6 +1624,9 @@ function Player:Update()
 		AutoAoe:Purge()
 	end
 
+	self.stealth_remains = max(ShadowDance.known and ShadowDance:Remains() or 0, (Subterfuge.known or UnderhandedUpperHand.known) and Subterfuge:Remains() or 0, Sepsis.known and Sepsis.buff:Remains() or 0)
+	self.stealthed_nomeld = self.stealth_remains > 0 or Stealth:Up() or Vanish:Up()
+	self.stealthed = self.stealthed_nomeld or (Shadowmeld.known and Shadowmeld:Up())
 	self.danse_stacks = DanseMacabre.known and DanseMacabre:Stack() or 0
 
 	self.main = APL[self.spec]:Main()
@@ -1631,7 +1642,6 @@ function Player:Init()
 	assassinPreviousPanel.ability = nil
 	self.guid = UnitGUID('player')
 	self.name = UnitName('player')
-	self.level = UnitLevel('player')
 	_, self.instance = IsInInstance()
 	Events:GROUP_ROSTER_UPDATE()
 	Events:PLAYER_SPECIALIZATION_CHANGED('player')
@@ -1670,6 +1680,7 @@ function Target:Update()
 	local guid = UnitGUID('target')
 	if not guid then
 		self.guid = nil
+		self.uid = nil
 		self.boss = false
 		self.stunnable = true
 		self.classification = 'normal'
@@ -1689,6 +1700,7 @@ function Target:Update()
 	end
 	if guid ~= self.guid then
 		self.guid = guid
+		self.uid = tonumber(guid:match('^%w+-%d+-%d+-%d+-%d+-(%d+)') or 0)
 		self:UpdateHealth(true)
 	end
 	self.boss = false
@@ -1703,6 +1715,9 @@ function Target:Update()
 	if not self.player and self.classification ~= 'minus' and self.classification ~= 'normal' then
 		self.boss = self.level >= (Player.level + 3)
 		self.stunnable = self.level < (Player.level + 2)
+	end
+	if self.Dummies[self.uid] then
+		self.boss = true
 	end
 	if self.hostile or Opt.always_on then
 		UI:UpdateCombat()
@@ -1723,10 +1738,7 @@ function Target:TimeToPct(pct)
 end
 
 function Target:Stunned()
-	if CheapShot:Up() or KidneyShot:Up() then
-		return true
-	end
-	return false
+	return CheapShot:Up() or KidneyShot:Up()
 end
 
 -- End Target Functions
@@ -1771,20 +1783,11 @@ end
 Gouge.EnergyCost = CheapShot.EnergyCost
 
 function CheapShot:Usable(...)
-	if not Target.stunnable then
-		return false
-	end
-	if not Player.stealthed then
-		return false
-	end
-	return Ability.Usable(self, ...)
+	return Target.stunnable and Player.stealthed and Ability.Usable(self, ...)
 end
 
 function Gouge:Usable(...)
-	if not Target.stunnable then
-		return false
-	end
-	return Ability.Usable(self, ...)
+	return Target.stunnable and Ability.Usable(self, ...)
 end
 KidneyShot.Usable = Gouge.Usable
 
@@ -1956,12 +1959,12 @@ end
 function RollTheBones:WillLose(buff)
 	local count = self:Stack()
 	if not buff then
-		if Player.set_bonus.t31 >= 4 then
+		if (Player.set_bonus.t31 >= 4 or Player.set_bonus.t32 >= 4) then
 			count = count - 1
 		end
 		return max(0, count)
 	end
-	if buff:Down() or (Player.set_bonus.t31 >= 4 and count <= 1) then
+	if buff:Down() or ((Player.set_bonus.t31 >= 4 or Player.set_bonus.t32 >= 4) and count <= 1) then
 		return false
 	end
 	return true
@@ -2037,6 +2040,11 @@ APL[SPEC.NONE].Main = function(self)
 end
 
 APL[SPEC.ASSASSINATION].Main = function(self)
+	if Player.health.pct < Opt.heal then
+		if CrimsonVial:Usable() then
+			UseExtra(CrimsonVial)
+		end
+	end
 	if Player:TimeInCombat() == 0 then
 		if Opt.poisons then
 			if Player.poison.lethal and Player.poison.lethal:Usable() and Player.poison.lethal:Remains() < 300 then
@@ -2211,6 +2219,11 @@ APL[SPEC.OUTLAW].Main = function(self)
 	self.use_cds = Opt.cooldown and (Target.boss or Target.player or (not Opt.boss_only and Target.timeToDie > Opt.cd_ttd) or AdrenalineRush:Up())
 	self:rtb()
 
+	if Player.health.pct < Opt.heal then
+		if CrimsonVial:Usable() then
+			UseExtra(CrimsonVial)
+		end
+	end
 	if Player:TimeInCombat() == 0 then
 --[[
 actions.precombat=apply_poison
@@ -2236,7 +2249,7 @@ actions.precombat+=/stealth
 		if self.use_cds and UnderhandedUpperHand.known and BladeFlurry:Usable() and AdrenalineRush:Ready() and BladeFlurry:Down() then
 			UseCooldown(BladeFlurry)
 		end
-		if RollTheBones:Usable() and (self.rtb_reroll or self.rtb_remains < 5 or (self.rtb_buffs == 1 and Player.set_bonus.t31 >= 4)) then
+		if RollTheBones:Usable() and (self.rtb_reroll or self.rtb_remains < 5 or (self.rtb_buffs == 1 and (Player.set_bonus.t31 >= 4 or Player.set_bonus.t32 >= 4))) then
 			UseCooldown(RollTheBones)
 		end
 		if self.use_cds and ImprovedAdrenalineRush.known and AdrenalineRush:Usable() and AdrenalineRush:Down() then
@@ -2325,7 +2338,7 @@ actions+=/variable,name=rtb_reroll,op=reset,if=!(raid_event.adds.remains>12|raid
 		)
 		self.rtb_reroll = self.rtb_value < (Opt.rtb_values.threshold + (LoadedDice:Up() and Opt.rtb_values.loaded_dice or 0))
 	elseif Crackshot.known then
-		if Player.set_bonus.t31 >= 4 then
+		if (Player.set_bonus.t31 >= 4 or Player.set_bonus.t32 >= 4) then
 			self.rtb_reroll = self.rtb_will_lose <= (1 + (LoadedDice:Up() and 1 or 0))
 		else
 			self.rtb_reroll = self.rtb_will_lose <= 1 and ((HiddenOpportunity.known and not RollTheBones:WillLose(TrueBearing)) or (not HiddenOpportunity.known and not RollTheBones:WillLose(Broadside)))
@@ -2455,7 +2468,7 @@ actions.cds+=/use_items,slots=trinket2,if=buff.between_the_eyes.up|trinket.2.has
 	end
 	if RollTheBones:Usable() and (
 		self.rtb_buffs == 0 or
-		(self.rtb_remains <= 2 and Player.set_bonus.t31 >= 4) or
+		(self.rtb_remains <= 2 and (Player.set_bonus.t31 >= 4 or Player.set_bonus.t32 >= 4)) or
 		((not Crackshot.known or Player.stealth_remains <= 0) and (
 			self.rtb_reroll or
 			(self.rtb_remains <= 7 and (ShadowDance:Ready() or (self.vanish_condition and Vanish:Ready())))
@@ -2463,7 +2476,7 @@ actions.cds+=/use_items,slots=trinket2,if=buff.between_the_eyes.up|trinket.2.has
 	) then
 		return UseCooldown(RollTheBones)
 	end
-	if self.use_cds and KeepItRolling:Usable() and not self.rtb_reroll and self.rtb_buffs >= (3 + (Player.set_bonus.t31 >= 4 and 1 or 0)) and (ShadowDance:Down() or self.rtb_buffs >= 6) then
+	if self.use_cds and KeepItRolling:Usable() and not self.rtb_reroll and self.rtb_buffs >= (3 + ((Player.set_bonus.t31 >= 4 or Player.set_bonus.t32 >= 4) and 1 or 0)) and (ShadowDance:Down() or self.rtb_buffs >= 6) then
 		return UseCooldown(KeepItRolling)
 	end
 	if self.use_cds and GhostlyStrike:Usable() and Stealth:Down() and Shadowmeld:Down() then
@@ -2590,6 +2603,11 @@ actions.build+=/sinister_strike
 end
 
 APL[SPEC.SUBTLETY].Main = function(self)
+	if Player.health.pct < Opt.heal then
+		if CrimsonVial:Usable() then
+			UseExtra(CrimsonVial)
+		end
+	end
 	if Player:TimeInCombat() == 0 then
 --[[
 actions.precombat=apply_poison
@@ -3510,9 +3528,17 @@ end
 
 function Events:UNIT_HEALTH(unitId)
 	if unitId == 'player' then
-		Player.health.current = UnitHealth('player')
-		Player.health.max = UnitHealthMax('player')
+		Player.health.current = UnitHealth(unitId)
+		Player.health.max = UnitHealthMax(unitId)
 		Player.health.pct = Player.health.current / Player.health.max * 100
+	end
+end
+
+function Events:UNIT_MAXPOWER(unitId)
+	if unitId == 'player' then
+		Player.level = UnitLevel(unitId)
+		Player.energy.max = UnitPowerMax(unitId, 3)
+		Player.combo_points.max = UnitPowerMax(unitId, 4)
 	end
 end
 
@@ -3637,6 +3663,7 @@ function Events:PLAYER_EQUIPMENT_CHANGED()
 	Player.set_bonus.t29 = (Player:Equipped(200369) and 1 or 0) + (Player:Equipped(200371) and 1 or 0) + (Player:Equipped(200372) and 1 or 0) + (Player:Equipped(200373) and 1 or 0) + (Player:Equipped(200374) and 1 or 0)
 	Player.set_bonus.t30 = (Player:Equipped(202495) and 1 or 0) + (Player:Equipped(202496) and 1 or 0) + (Player:Equipped(202497) and 1 or 0) + (Player:Equipped(202498) and 1 or 0) + (Player:Equipped(202500) and 1 or 0)
 	Player.set_bonus.t31 = (Player:Equipped(207234) and 1 or 0) + (Player:Equipped(207235) and 1 or 0) + (Player:Equipped(207236) and 1 or 0) + (Player:Equipped(207237) and 1 or 0) + (Player:Equipped(207239) and 1 or 0)
+	Player.set_bonus.t32 = (Player:Equipped(217206) and 1 or 0) + (Player:Equipped(217207) and 1 or 0) + (Player:Equipped(217208) and 1 or 0) + (Player:Equipped(217209) and 1 or 0) + (Player:Equipped(217210) and 1 or 0)
 
 	Player:ResetSwing(true, true)
 	Player:UpdateKnown()
@@ -3652,6 +3679,7 @@ function Events:PLAYER_SPECIALIZATION_CHANGED(unitId)
 	Events:PLAYER_EQUIPMENT_CHANGED()
 	Events:PLAYER_REGEN_ENABLED()
 	Events:UNIT_HEALTH('player')
+	Events:UNIT_MAXPOWER('player')
 	UI.OnResourceFrameShow()
 	Target:Update()
 	Player:Update()
@@ -4006,6 +4034,12 @@ SlashCmdList[ADDON] = function(msg, editbox)
 		end
 		return Status('Show on-use trinkets in cooldown UI', Opt.trinket)
 	end
+	if startsWith(msg[1], 'he') then
+		if msg[2] then
+			Opt.heal = clamp(tonumber(msg[2]) or 60, 0, 100)
+		end
+		return Status('Health percentage threshold to recommend self healing spells', Opt.heal .. '%')
+	end
 	if startsWith(msg[1], 'poi') then
 		if msg[2] then
 			Opt.poisons = msg[2] == 'on'
@@ -4096,6 +4130,7 @@ SlashCmdList[ADDON] = function(msg, editbox)
 		'ttd |cFFFFD000[seconds]|r  - minimum enemy lifetime to use cooldowns on (default is 8 seconds, ignored on bosses)',
 		'pot |cFF00C000on|r/|cFFC00000off|r - show flasks and battle potions in cooldown UI',
 		'trinket |cFF00C000on|r/|cFFC00000off|r - show on-use trinkets in cooldown UI',
+		'heal |cFFFFD000[percent]|r - health percentage threshold to recommend self healing spells (default is 60%, 0 to disable)',
 		'poisons |cFF00C000on|r/|cFFC00000off|r - show a reminder for poisons (5 minutes outside combat)',
 		'priority |cFF00C000on|r/|cFFC00000off|r - use "priority rotation" mode (off by default)',
 		'vanish |cFF00C000on|r/|cFFC00000off|r - use Vanish and Shadowmeld while solo (off by default)',
