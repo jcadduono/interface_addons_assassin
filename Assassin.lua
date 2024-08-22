@@ -287,6 +287,7 @@ local Player = {
 		t30 = 0, -- Lurking Specter's Shadeweave
 		t31 = 0, -- Lucid Shadewalker's Silence
 		t32 = 0, -- Lurking Specter's Shadeweave (Awakened)
+		t33 = 0, -- K'areshi Phantom's Bindings
 	},
 	previous_gcd = {},-- list of previous GCD abilities
 	item_use_blacklist = { -- list of item IDs with on-use effects we should mark unusable
@@ -768,10 +769,10 @@ function Ability:FullRechargeTime()
 		end
 		charges = charges - 1
 	end
-	if charges >= max_charges then
+	if charges >= info.maxCharges then
 		return 0
 	end
-	return (max_charges - charges - 1) * info.cooldownDuration + (recharge_time - (Player.ctime - info.cooldownStartTime) - (self.off_gcd and 0 or Player.execute_remains))
+	return (info.maxCharges - charges - 1) * info.cooldownDuration + (info.cooldownDuration - (Player.ctime - info.cooldownStartTime) - (self.off_gcd and 0 or Player.execute_remains))
 end
 
 function Ability:Duration()
@@ -3838,6 +3839,7 @@ function Events:PLAYER_EQUIPMENT_CHANGED()
 	Player.set_bonus.t30 = (Player:Equipped(202495) and 1 or 0) + (Player:Equipped(202496) and 1 or 0) + (Player:Equipped(202497) and 1 or 0) + (Player:Equipped(202498) and 1 or 0) + (Player:Equipped(202500) and 1 or 0)
 	Player.set_bonus.t31 = (Player:Equipped(207234) and 1 or 0) + (Player:Equipped(207235) and 1 or 0) + (Player:Equipped(207236) and 1 or 0) + (Player:Equipped(207237) and 1 or 0) + (Player:Equipped(207239) and 1 or 0)
 	Player.set_bonus.t32 = (Player:Equipped(217206) and 1 or 0) + (Player:Equipped(217207) and 1 or 0) + (Player:Equipped(217208) and 1 or 0) + (Player:Equipped(217209) and 1 or 0) + (Player:Equipped(217210) and 1 or 0)
+	Player.set_bonus.t33 = (Player:Equipped(212036) and 1 or 0) + (Player:Equipped(212037) and 1 or 0) + (Player:Equipped(212038) and 1 or 0) + (Player:Equipped(212039) and 1 or 0) + (Player:Equipped(212041) and 1 or 0)
 
 	Player:ResetSwing(true, true)
 	Player:UpdateKnown()
@@ -4282,7 +4284,7 @@ SlashCmdList[ADDON] = function(msg, editbox)
 		UI:Reset()
 		return Status('Position has been reset to', 'default')
 	end
-	print(ADDON, '(version: |cFFFFD000' .. GetAddOnMetadata(ADDON, 'Version') .. '|r) - Commands:')
+	print(ADDON, '(version: |cFFFFD000' .. C_AddOns.GetAddOnMetadata(ADDON, 'Version') .. '|r) - Commands:')
 	for _, cmd in next, {
 		'locked |cFF00C000on|r/|cFFC00000off|r - lock the ' .. ADDON .. ' UI so that it can\'t be moved',
 		'snap |cFF00C000above|r/|cFF00C000below|r/|cFFC00000off|r - snap the ' .. ADDON .. ' UI to the Personal Resource Display',
