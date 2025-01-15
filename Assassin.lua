@@ -178,7 +178,7 @@ local Abilities = {
 	bySpellId = {},
 	velocity = {},
 	autoAoe = {},
-	trackAuras = {},
+	tracked = {},
 }
 
 -- methods for target tracking / aoe modes
@@ -187,6 +187,9 @@ local AutoAoe = {
 	blacklist = {},
 	ignored_units = {},
 }
+
+-- methods for tracking ticking debuffs on targets
+local TrackedAuras = {}
 
 -- timers for updating combat/display/hp info
 local Timer = {
@@ -234,8 +237,8 @@ local Player = {
 	},
 	energy = {
 		current = 0,
-		deficit = 100,
 		max = 100,
+		deficit = 100,
 		regen = 0,
 	},
 	combo_points = {
@@ -283,10 +286,6 @@ local Player = {
 		last_taken = 0,
 	},
 	set_bonus = {
-		t29 = 0, -- Vault Delver's Toolkit
-		t30 = 0, -- Lurking Specter's Shadeweave
-		t31 = 0, -- Lucid Shadewalker's Silence
-		t32 = 0, -- Lurking Specter's Shadeweave (Awakened)
 		t33 = 0, -- K'areshi Phantom's Bindings
 	},
 	previous_gcd = {},-- list of previous GCD abilities
@@ -330,6 +329,14 @@ Target.Dummies = {
 	[194649] = true,
 	[197833] = true,
 	[198594] = true,
+	[219250] = true,
+	[225983] = true,
+	[225984] = true,
+	[225985] = true,
+	[225976] = true,
+	[225977] = true,
+	[225978] = true,
+	[225982] = true,
 }
 
 -- Start AoE
@@ -561,6 +568,10 @@ function Ability:Remains()
 	return 0
 end
 
+function Ability:React()
+	return self:Remains()
+end
+
 function Ability:Expiring(seconds)
 	local remains = self:Remains()
 	return remains > 0 and remains < (seconds or Player.gcd)
@@ -722,12 +733,27 @@ function Ability:Stack()
 	return 0
 end
 
+function Ability:MaxStack()
+	return self.max_stack
+end
+
+function Ability:Capped(deficit)
+	return self:Stack() >= (self:MaxStack() - (deficit or 0))
+end
+
 function Ability:EnergyCost()
 	return self.energy_cost
 end
 
 function Ability:CPCost()
 	return self.cp_cost
+end
+
+function Ability:Free()
+	return (
+		(self.energy_cost > 0 and self:EnergyCost() == 0) or
+		(self.cp_cost > 0 and self:CPCost() == 0)
+	)
 end
 
 function Ability:ChargesFractional()
@@ -873,9 +899,6 @@ function Ability:CastSuccess(dstGUID)
 		Player.previous_gcd[10] = nil
 		table.insert(Player.previous_gcd, 1, self)
 	end
-	if self.aura_targets and self.requires_react then
-		self:RemoveAura(self.aura_target == 'player' and Player.guid or dstGUID)
-	end
 	if Opt.auto_aoe and self.auto_aoe and self.auto_aoe.trigger == 'SPELL_CAST_SUCCESS' then
 		AutoAoe:Add(dstGUID, true)
 	end
@@ -930,10 +953,8 @@ end
 
 -- Start DoT tracking
 
-local trackAuras = {}
-
-function trackAuras:Purge()
-	for _, ability in next, Abilities.trackAuras do
+function TrackedAuras:Purge()
+	for _, ability in next, Abilities.tracked do
 		for guid, aura in next, ability.aura_targets do
 			if aura.expires <= Player.time then
 				ability:RemoveAura(guid)
@@ -942,13 +963,13 @@ function trackAuras:Purge()
 	end
 end
 
-function trackAuras:Remove(guid)
-	for _, ability in next, Abilities.trackAuras do
+function TrackedAuras:Remove(guid)
+	for _, ability in next, Abilities.tracked do
 		ability:RemoveAura(guid)
 	end
 end
 
-function Ability:TrackAuras()
+function Ability:Track()
 	self.aura_targets = {}
 end
 
@@ -1023,7 +1044,7 @@ Rupture.energy_cost = 25
 Rupture.cp_cost = 1
 Rupture.tick_interval = 2
 Rupture.hasted_ticks = true
-Rupture:TrackAuras()
+Rupture:Track()
 Rupture:AutoAoe(false, 'apply')
 local ShadowDance = Ability:Add(185313, true, true, 185422)
 ShadowDance.buff_duration = 6
@@ -1061,6 +1082,7 @@ local Gouge = Ability:Add(1776, false, true)
 Gouge.buff_duration = 4
 Gouge.cooldown_duration = 15
 Gouge.energy_cost = 25
+local ImprovedAmbush = Ability:Add(381620, false, true)
 local Nightstalker = Ability:Add(14062, false, true)
 local ResoundingClarity = Ability:Add(381622, true, true)
 local SealFate = Ability:Add(14190, true, true, 14189)
@@ -1101,7 +1123,7 @@ DeadlyPoison.dot = Ability:Add(2818, false, true)
 DeadlyPoison.dot.buff_duration = 12
 DeadlyPoison.dot.tick_interval = 2
 DeadlyPoison.dot.hasted_ticks = true
-DeadlyPoison.dot:TrackAuras()
+DeadlyPoison.dot:Track()
 local InstantPoison = Ability:Add(315584, true, true)
 InstantPoison.buff_duration = 3600
 local NumbingPoison = Ability:Add(5761, true, true)
@@ -1112,7 +1134,7 @@ local WoundPoison = Ability:Add(8679, true, true)
 WoundPoison.buff_duration = 3600
 WoundPoison.dot = Ability:Add(8680, false, true)
 WoundPoison.dot.buff_duration = 12
-WoundPoison.dot:TrackAuras()
+WoundPoison.dot:Track()
 ---- Assassination
 local Envenom = Ability:Add(32645, true, true)
 Envenom.buff_duration = 1
@@ -1127,7 +1149,7 @@ Garrote.cooldown_duration = 15
 Garrote.energy_cost = 45
 Garrote.tick_interval = 2
 Garrote.hasted_ticks = true
-Garrote:TrackAuras()
+Garrote:Track()
 local Mutilate = Ability:Add(1329, false, true)
 Mutilate.energy_cost = 55
 local SurgeOfToxins = Ability:Add(192425, false, true)
@@ -1325,6 +1347,13 @@ ShurikenTornado:AutoAoe(true)
 local SilentStorm = Ability:Add(385722, true, true, 385727)
 local TheRotten = Ability:Add(382015, true, true, 394203)
 TheRotten.buff_duration = 30
+-- Hero talents
+---- Deathstalker
+
+---- Fatebound
+
+---- Trickster
+
 -- Tier bonuses
 
 -- PvP talents
@@ -1403,15 +1432,11 @@ function InventoryItem:Usable(seconds)
 end
 
 -- Inventory Items
-
+local Healthstone = InventoryItem:Add(5512)
+Healthstone.max_charges = 3
 -- Equipment
 local Trinket1 = InventoryItem:Add(0)
 local Trinket2 = InventoryItem:Add(0)
-Trinket.BeaconToTheBeyond = InventoryItem:Add(203963)
-Trinket.BeaconToTheBeyond.cooldown_duration = 150
-Trinket.BeaconToTheBeyond.off_gcd = false
-Trinket.DragonfireBombDispenser = InventoryItem:Add(202610)
-Trinket.ElementiumPocketAnvil = InventoryItem:Add(202617)
 -- End Inventory Items
 
 -- Start Abilities Functions
@@ -1420,7 +1445,7 @@ function Abilities:Update()
 	wipe(self.bySpellId)
 	wipe(self.velocity)
 	wipe(self.autoAoe)
-	wipe(self.trackAuras)
+	wipe(self.tracked)
 	for _, ability in next, self.all do
 		if ability.known then
 			self.bySpellId[ability.spellId] = ability
@@ -1434,7 +1459,7 @@ function Abilities:Update()
 				self.autoAoe[#self.autoAoe + 1] = ability
 			end
 			if ability.aura_targets then
-				self.trackAuras[#self.trackAuras + 1] = ability
+				self.tracked[#self.tracked + 1] = ability
 			end
 		end
 	end
@@ -1730,17 +1755,17 @@ function Player:Update()
 	self.energy.current = UnitPower('player', 3) + (self.energy.regen * self.execute_remains)
 	self.energy.current = clamp(self.energy.current, 0, self.energy.max)
 	self.energy.deficit = self.energy.max - self.energy.current
+	speed, max_speed = GetUnitSpeed('player')
+	self.moving = speed ~= 0
+	self.movement_speed = max_speed / 7 * 100
 	speed_mh, speed_oh = UnitAttackSpeed('player')
 	self.swing.mh.speed = speed_mh or 0
 	self.swing.oh.speed = speed_oh or 0
 	self.swing.mh.remains = max(0, self.swing.mh.last + self.swing.mh.speed - self.time)
 	self.swing.oh.remains = max(0, self.swing.oh.last + self.swing.oh.speed - self.time)
-	speed, max_speed = GetUnitSpeed('player')
-	self.moving = speed ~= 0
-	self.movement_speed = max_speed / 7 * 100
 	self:UpdateThreat()
 
-	trackAuras:Purge()
+	TrackedAuras:Purge()
 	if Opt.auto_aoe then
 		for _, ability in next, Abilities.autoAoe do
 			ability:UpdateTargetsHit()
@@ -1805,7 +1830,7 @@ function Target:UpdateHealth(reset)
 		table.remove(self.health.history, 1)
 		self.health.history[25] = self.health.current
 	end
-	self.timeToDieMax = self.health.current / Player.health.max * 10
+	self.timeToDieMax = self.health.current / Player.health.max * 15
 	self.health.pct = self.health.max > 0 and (self.health.current / self.health.max * 100) or 100
 	self.health.loss_per_sec = (self.health.history[1] - self.health.current) / 5
 	self.timeToDie = (
@@ -1912,11 +1937,11 @@ function Ambush:Usable(...)
 	return Ability.Usable(self, ...)
 end
 
-function Shadowstrike:Usable()
+function Shadowstrike:Usable(...)
 	if not Player.stealthed then
 		return false
 	end
-	return Ability.Usable(self)
+	return Ability.Usable(self, ...)
 end
 
 function CheapShot:EnergyCost()
@@ -2049,10 +2074,10 @@ EchoingReprimand.finishers = {
 	[SecretTechnique] = true,
 }
 
-function EchoingReprimand:Remains()
+function EchoingReprimand:Remains(...)
 	local remains
 	for i = 2, 5 do
-		remains = self[i]:Remains()
+		remains = self[i]:Remains(...)
 		if remains > 0 then
 			return remains
 		end
@@ -2104,12 +2129,9 @@ end
 function RollTheBones:WillLose(buff)
 	local count = self:Stack()
 	if not buff then
-		if (Player.set_bonus.t31 >= 4 or Player.set_bonus.t32 >= 4) then
-			count = count - 1
-		end
-		return max(0, count)
+		return count
 	end
-	if buff:Down() or ((Player.set_bonus.t31 >= 4 or Player.set_bonus.t32 >= 4) and count <= 1) then
+	if buff:Down() then
 		return false
 	end
 	return true
@@ -2394,7 +2416,7 @@ actions.precombat+=/stealth
 		if self.use_cds and UnderhandedUpperHand.known and BladeFlurry:Usable() and AdrenalineRush:Ready() and BladeFlurry:Down() then
 			UseCooldown(BladeFlurry)
 		end
-		if RollTheBones:Usable() and (self.rtb_reroll or self.rtb_remains < 5 or (self.rtb_buffs == 1 and (Player.set_bonus.t31 >= 4 or Player.set_bonus.t32 >= 4))) then
+		if RollTheBones:Usable() and (self.rtb_reroll or self.rtb_remains < 5) then
 			UseCooldown(RollTheBones)
 		end
 		if self.use_cds and ImprovedAdrenalineRush.known and AdrenalineRush:Usable() and AdrenalineRush:Down() then
@@ -2454,10 +2476,8 @@ actions+=/variable,name=rtb_value,value=(buff.broadside.up*10)+(buff.true_bearin
 actions+=/variable,name=rtb_reroll,value=variable.rtb_value<(16+(7*buff.loaded_dice.up))
 # Default Roll the Bones reroll rule: reroll for any buffs that aren't Buried Treasure, excluding Grand Melee in single target
 actions+=/variable,name=rtb_reroll,value=rtb_buffs.will_lose=(rtb_buffs.will_lose.buried_treasure+rtb_buffs.will_lose.grand_melee&spell_targets.blade_flurry<2&raid_event.adds.in>10)
-# Crackshot builds without T31 should reroll for True Bearing (or Broadside without Hidden Opportunity) if we won't lose over 1 buff
-actions+=/variable,name=rtb_reroll,if=talent.crackshot&!set_bonus.tier31_4pc,value=(!rtb_buffs.will_lose.true_bearing&talent.hidden_opportunity|!rtb_buffs.will_lose.broadside&!talent.hidden_opportunity)&rtb_buffs.will_lose<=1
-# Crackshot builds with T31 should reroll if we won't lose over 1 buff (2 with Loaded Dice)
-actions+=/variable,name=rtb_reroll,if=talent.crackshot&set_bonus.tier31_4pc,value=(rtb_buffs.will_lose<=1+buff.loaded_dice.up)
+# Crackshot builds should reroll for True Bearing (or Broadside without Hidden Opportunity) if we won't lose over 1 buff
+actions+=/variable,name=rtb_reroll,if=talent.crackshot,value=(!rtb_buffs.will_lose.true_bearing&talent.hidden_opportunity|!rtb_buffs.will_lose.broadside&!talent.hidden_opportunity)&rtb_buffs.will_lose<=1
 # Hidden Opportunity builds without Crackshot should reroll for Skull and Crossbones or any 2 buffs excluding Grand Melee in single target
 actions+=/variable,name=rtb_reroll,if=!talent.crackshot&talent.hidden_opportunity,value=!rtb_buffs.will_lose.skull_and_crossbones&(rtb_buffs.will_lose<2+rtb_buffs.will_lose.grand_melee&spell_targets.blade_flurry<2&raid_event.adds.in>10)
 # Additional reroll rules if all active buffs will not be rolled away and we don't already have 5+ buffs outside of stealth
@@ -2483,11 +2503,7 @@ actions+=/variable,name=rtb_reroll,op=reset,if=!(raid_event.adds.remains>12|raid
 		)
 		self.rtb_reroll = self.rtb_value < (Opt.rtb_values.threshold + (LoadedDice:Up() and Opt.rtb_values.loaded_dice or 0))
 	elseif Crackshot.known then
-		if (Player.set_bonus.t31 >= 4 or Player.set_bonus.t32 >= 4) then
-			self.rtb_reroll = self.rtb_will_lose <= (1 + (LoadedDice:Up() and 1 or 0))
-		else
-			self.rtb_reroll = self.rtb_will_lose <= 1 and ((HiddenOpportunity.known and not RollTheBones:WillLose(TrueBearing)) or (not HiddenOpportunity.known and not RollTheBones:WillLose(Broadside)))
-		end
+		self.rtb_reroll = self.rtb_will_lose <= 1 and ((HiddenOpportunity.known and not RollTheBones:WillLose(TrueBearing)) or (not HiddenOpportunity.known and not RollTheBones:WillLose(Broadside)))
 	elseif HiddenOpportunity.known then
 		self.rtb_reroll = not RollTheBones:WillLose(SkullAndCrossbones) and self.rtb_will_lose < (2 + ((Player.enemies < 2 and RollTheBones:WillLose(GrandMelee)) and 1 or 0))
 	else
@@ -2576,10 +2592,10 @@ actions.cds=adrenaline_rush,if=(!buff.adrenaline_rush.up|stealthed.all&talent.cr
 actions.cds+=/blade_flurry,if=(spell_targets>=2-talent.underhanded_upper_hand&!stealthed.rogue)&buff.blade_flurry.remains<gcd
 # With Deft Maneuvers, use Blade Flurry on cooldown at 5+ targets, or at 3-4 targets if missing combo points equal to the amount given
 actions.cds+=/blade_flurry,if=talent.deft_maneuvers&!variable.finish_condition&(spell_targets>=3&combo_points.deficit=spell_targets+buff.broadside.up|spell_targets>=5)
-# Use Roll the Bones if reroll conditions are met, or with no buffs, or 2s before buffs expire with T31, or 7s before buffs expire with Vanish/Dance ready
-actions.cds+=/roll_the_bones,if=rtb_buffs=0|rtb_buffs.max_remains<=2&set_bonus.tier31_4pc|(!talent.crackshot|buff.subterfuge.down&buff.shadow_dance.down)&(variable.rtb_reroll|rtb_buffs.max_remains<=7&(cooldown.shadow_dance.ready|cooldown.vanish.ready))
-# Use Keep it Rolling with at least 3 buffs (4 with T31)
-actions.cds+=/keep_it_rolling,if=!variable.rtb_reroll&rtb_buffs>=3+set_bonus.tier31_4pc&(buff.shadow_dance.down|rtb_buffs>=6)
+# Use Roll the Bones if reroll conditions are met, or with no buffs, or 7s before buffs expire with Vanish/Dance ready
+actions.cds+=/roll_the_bones,if=rtb_buffs=0|(!talent.crackshot|buff.subterfuge.down&buff.shadow_dance.down)&(variable.rtb_reroll|rtb_buffs.max_remains<=7&(cooldown.shadow_dance.ready|cooldown.vanish.ready))
+# Use Keep it Rolling with at least 3 buffs
+actions.cds+=/keep_it_rolling,if=!variable.rtb_reroll&rtb_buffs>=3&(buff.shadow_dance.down|rtb_buffs>=6)
 actions.cds+=/ghostly_strike
 # Use Sepsis to trigger Crackshot or if the target will survive its DoT
 actions.cds+=/sepsis,if=talent.crackshot&cooldown.between_the_eyes.ready&variable.finish_condition&!stealthed.all|!talent.crackshot&target.time_to_die>11&buff.between_the_eyes.up|fight_remains<11
@@ -2594,11 +2610,6 @@ actions.cds+=/berserking
 actions.cds+=/fireblood
 actions.cds+=/ancestral_call
 # Default conditions for usable items.
-actions.cds+=/use_item,name=manic_grieftorch,use_off_gcd=1,if=gcd.remains>gcd.max-0.1&!stealthed.all&buff.between_the_eyes.up|fight_remains<=5
-actions.cds+=/use_item,name=dragonfire_bomb_dispenser,use_off_gcd=1,if=(!trinket.1.is.dragonfire_bomb_dispenser&trinket.1.cooldown.remains>10|trinket.2.cooldown.remains>10)|cooldown.dragonfire_bomb_dispenser.charges>2|fight_remains<20|!trinket.2.has_cooldown|!trinket.1.has_cooldown
-actions.cds+=/use_item,name=beacon_to_the_beyond,use_off_gcd=1,if=gcd.remains>gcd.max-0.1&!stealthed.all&buff.between_the_eyes.up|fight_remains<=5
-actions.cds+=/use_item,name=stormeaters_boon,if=spell_targets.blade_flurry>desired_targets|raid_event.adds.in>60|fight_remains<10
-actions.cds+=/use_item,name=windscar_whetstone,if=spell_targets.blade_flurry>desired_targets|raid_event.adds.in>60|fight_remains<7
 actions.cds+=/use_items,slots=trinket1,if=buff.between_the_eyes.up|trinket.1.has_stat.any_dps|fight_remains<=20
 actions.cds+=/use_items,slots=trinket2,if=buff.between_the_eyes.up|trinket.2.has_stat.any_dps|fight_remains<=20
 ]]
@@ -2613,7 +2624,6 @@ actions.cds+=/use_items,slots=trinket2,if=buff.between_the_eyes.up|trinket.2.has
 	end
 	if RollTheBones:Usable() and (
 		self.rtb_buffs == 0 or
-		(self.rtb_remains <= 2 and (Player.set_bonus.t31 >= 4 or Player.set_bonus.t32 >= 4)) or
 		((not Crackshot.known or Player.stealth_remains <= 0) and (
 			self.rtb_reroll or
 			(self.rtb_remains <= 7 and (ShadowDance:Ready() or (self.vanish_condition and Vanish:Ready())))
@@ -2621,7 +2631,7 @@ actions.cds+=/use_items,slots=trinket2,if=buff.between_the_eyes.up|trinket.2.has
 	) then
 		return UseCooldown(RollTheBones)
 	end
-	if self.use_cds and KeepItRolling:Usable() and not self.rtb_reroll and self.rtb_buffs >= (3 + ((Player.set_bonus.t31 >= 4 or Player.set_bonus.t32 >= 4) and 1 or 0)) and (ShadowDance:Down() or self.rtb_buffs >= 6) then
+	if self.use_cds and KeepItRolling:Usable() and not self.rtb_reroll and self.rtb_buffs >= 3 and (ShadowDance:Down() or self.rtb_buffs >= 6) then
 		return UseCooldown(KeepItRolling)
 	end
 	if self.use_cds and GhostlyStrike:Usable() and Stealth:Down() and Shadowmeld:Down() then
@@ -2647,13 +2657,7 @@ actions.cds+=/use_items,slots=trinket2,if=buff.between_the_eyes.up|trinket.2.has
 		return UseCooldown(BladeRush)
 	end
 	if Opt.trinket then
-		if Trinket.BeaconToTheBeyond:Usable() and not Player.stealthed and BetweenTheEyes:Up() then
-			return UseCooldown(Trinket.BeaconToTheBeyond)
-		elseif Trinket.DragonfireBombDispenser:Usable() and (Player.enemies > 1 or Target.timeToDie > 8) then
-			return UseCooldown(Trinket.DragonfireBombDispenser)
-		elseif Trinket.ElementiumPocketAnvil:Usable() and Player.energy.deficit >= (15 + Player.energy.regen) and not Player.stealthed then
-			return UseCooldown(Trinket.ElementiumPocketAnvil)
-		elseif (Target.boss and Target.timeToDie < 20) or (BetweenTheEyes:Up() and (not GhostlyStrike.known or GhostlyStrike:Up())) then
+		if (Target.boss and Target.timeToDie < 20) or (BetweenTheEyes:Up() and (not GhostlyStrike.known or GhostlyStrike:Up())) then
 			if Trinket1:Usable() then
 				return UseCooldown(Trinket1)
 			elseif Trinket2:Usable() then
@@ -2665,8 +2669,8 @@ end
 
 APL[SPEC.OUTLAW].finish = function(self)
 --[[
-# Finishers  Use Between the Eyes to keep the crit buff up, but on cooldown if Improved/Greenskins/T30, and avoid overriding Greenskins
-actions.finish=between_the_eyes,if=!talent.crackshot&(buff.between_the_eyes.remains<4|talent.improved_between_the_eyes|talent.greenskins_wickers|set_bonus.tier30_4pc)&!buff.greenskins_wickers.up
+# Finishers  Use Between the Eyes to keep the crit buff up, but on cooldown if Improved/Greenskins, and avoid overriding Greenskins
+actions.finish=between_the_eyes,if=!talent.crackshot&(buff.between_the_eyes.remains<4|talent.improved_between_the_eyes|talent.greenskins_wickers)&!buff.greenskins_wickers.up
 # Crackshot builds use Between the Eyes outside of Stealth if Vanish or Dance will not come off cooldown within the next cast
 actions.finish+=/between_the_eyes,if=talent.crackshot&(cooldown.vanish.remains>45&cooldown.shadow_dance.remains>12)
 actions.finish+=/slice_and_dice,if=buff.slice_and_dice.remains<fight_remains&refreshable
@@ -2675,7 +2679,7 @@ actions.finish+=/cold_blood
 actions.finish+=/dispatch
 ]]
 	if BetweenTheEyes:Usable(Player:EnergyTimeToMax(50), true) and (
-		(not Crackshot.known and (not GreenskinsWickers.known or GreenskinsWickers:Down()) and (BetweenTheEyes:Remains() < 4 or ImprovedBetweenTheEyes.known or GreenskinsWickers.known or Player.set_bonus.t30 >= 4)) or
+		(not Crackshot.known and (not GreenskinsWickers.known or GreenskinsWickers:Down()) and (BetweenTheEyes:Remains() < 4 or ImprovedBetweenTheEyes.known or GreenskinsWickers.known)) or
 		(Crackshot.known and ((not self.vanish_condition or not Vanish:Ready(45)) and not ShadowDance:Ready(12)) and (Player.enemies > 1 or Target.timeToDie > 12 or Target.boss))
 	) then
 		return Pool(BetweenTheEyes)
@@ -2855,7 +2859,7 @@ actions.cds+=/flagellation,target_if=max:target.time_to_die,if=variable.snd_cond
 actions.cds+=/pool_resource,for_next=1,if=talent.shuriken_tornado.enabled&!talent.shadow_focus.enabled
 actions.cds+=/shuriken_tornado,if=spell_targets.shuriken_storm<=1&energy>=60&variable.snd_condition&cooldown.symbols_of_death.up&cooldown.shadow_dance.charges>=1&(!talent.flagellation.enabled&!cooldown.flagellation.up|buff.flagellation_buff.up|spell_targets.shuriken_storm>=5)&combo_points<=2&!buff.premeditation.up
 actions.cds+=/sepsis,if=variable.snd_condition&combo_points.deficit>=1&target.time_to_die>=16
-actions.cds+=/symbols_of_death,if=(buff.symbols_of_death.remains<=3&!cooldown.shadow_dance.ready|!set_bonus.tier30_2pc)&variable.rotten_condition&variable.snd_condition&(!talent.flagellation&(combo_points<=1|!talent.the_rotten)|cooldown.flagellation.remains>10|cooldown.flagellation.up&combo_points>=5)
+actions.cds+=/symbols_of_death,if=variable.rotten_condition&variable.snd_condition&(!talent.flagellation&(combo_points<=1|!talent.the_rotten)|cooldown.flagellation.remains>10|cooldown.flagellation.up&combo_points>=5)
 actions.cds+=/marked_for_death,line_cd=1.5,target_if=min:target.time_to_die,if=raid_event.adds.up&(target.time_to_die<combo_points.deficit|!stealthed.all&combo_points.deficit>=cp_max_spend)
 actions.cds+=/marked_for_death,if=raid_event.adds.in>30-raid_event.adds.duration&combo_points.deficit>=cp_max_spend
 actions.cds+=/shadow_blades,if=variable.snd_condition&combo_points.deficit>=2&target.time_to_die>=10&(dot.sepsis.ticking|cooldown.sepsis.remains<=8|!talent.sepsis)|fight_remains<=20
@@ -2869,8 +2873,6 @@ actions.cds+=/blood_fury,if=buff.symbols_of_death.up
 actions.cds+=/berserking,if=buff.symbols_of_death.up
 actions.cds+=/fireblood,if=buff.symbols_of_death.up
 actions.cds+=/ancestral_call,if=buff.symbols_of_death.up
-actions.cds+=/use_item,name=beacon_to_the_beyond,use_off_gcd=1,if=!stealthed.all&(buff.deeper_daggers.up|!talent.deeper_daggers)&(!raid_event.adds.up|!equipped.stormeaters_boon|trinket.stormeaters_boon.cooldown.remains>20)
-actions.cds+=/use_item,name=manic_grieftorch,use_off_gcd=1,if=!stealthed.all&(!raid_event.adds.up|!equipped.stormeaters_boon|trinket.stormeaters_boon.cooldown.remains>20)
 actions.cds+=/use_items,if=!stealthed.all|fight_remains<10
 ]]
 	self.rotten_condition = not TheRotten.known or Player.enemies > 1 or Premeditation:Down()
@@ -2878,7 +2880,7 @@ actions.cds+=/use_items,if=!stealthed.all|fight_remains<10
 		if ShadowDance:Usable() and ShadowDance:Down() then
 			return UseCooldown(ShadowDance)
 		end
-		if SymbolsOfDeath:Usable() and SymbolsOfDeath:Remains() < 1 and (Player.set_bonus.t30 < 2 or not ShadowDance:Ready(5)) then
+		if SymbolsOfDeath:Usable() and SymbolsOfDeath:Remains() < 1 then
 			return UseCooldown(SymbolsOfDeath)
 		end
 	end
@@ -2891,7 +2893,7 @@ actions.cds+=/use_items,if=!stealthed.all|fight_remains<10
 	if Flagellation:Usable() and self.snd_condition and Player.combo_points.current >= 5 and Target.timeToDie > 10 then
 		return UseCooldown(Flagellation)
 	end
-	if ShurikenTornado:Usable(0, true) and Player.enemies <= 1 and self.snd_condition and not (Stealth:Up() or Vanish:Up() or Shadowmeld:Up()) and (Player.set_bonus.t30 >= 2 or SymbolsOfDeath:Ready() or SymbolsOfDeath:Remains() > 4) and ShadowDance:Ready() and Player.combo_points.current <= 2 and Premeditation:Down() and (not Flagellation.known or not Flagellation:Ready() or Flagellation.buff:Up()) then
+	if ShurikenTornado:Usable(0, true) and Player.enemies <= 1 and self.snd_condition and not (Stealth:Up() or Vanish:Up() or Shadowmeld:Up()) and (SymbolsOfDeath:Ready() or SymbolsOfDeath:Remains() > 4) and ShadowDance:Ready() and Player.combo_points.current <= 2 and Premeditation:Down() and (not Flagellation.known or not Flagellation:Ready() or Flagellation.buff:Up()) then
 		if not ShadowFocus.known then
 			Player.pool_energy = 60
 			return UseCooldown(ShurikenTornado)
@@ -2903,7 +2905,7 @@ actions.cds+=/use_items,if=!stealthed.all|fight_remains<10
 	if Sepsis:Usable() and self.snd_condition and Player.combo_points.deficit >= 1 and Target.timeToDie >= 16 then
 		return UseCooldown(Sepsis)
 	end
-	if SymbolsOfDeath:Usable() and self.rotten_condition and self.snd_condition and (Player.set_bonus.t30 < 2 or (SymbolsOfDeath:Remains() < 1 and not ShadowDance:Ready(SymbolsOfDeath:Remains() + 5))) and ((not Flagellation.known and (Player.combo_points.current <= 1 or not TheRotten.known)) or (Flagellation.known and (not Flagellation:Ready(10) or (Flagellation:Ready() and Player.combo_points.current >= 5)))) then
+	if SymbolsOfDeath:Usable() and self.rotten_condition and self.snd_condition and ((not Flagellation.known and (Player.combo_points.current <= 1 or not TheRotten.known)) or (Flagellation.known and (not Flagellation:Ready(10) or (Flagellation:Ready() and Player.combo_points.current >= 5)))) then
 		return UseCooldown(SymbolsOfDeath)
 	end
 	if ShadowBlades:Usable() and ShadowBlades:Down() and ((self.snd_condition and Player.combo_points.deficit >= 2 and (Target.timeToDie >= 10 or Player.enemies > 1) and (not Sepsis.known or Sepsis:Ready(8) or Sepsis:Up())) or (Target.boss and Target.timeToDie < 20)) then
@@ -2929,13 +2931,7 @@ actions.cds+=/use_items,if=!stealthed.all|fight_remains<10
 		UseExtra(ThistleTea)
 	end
 	if Opt.trinket and not (Stealth:Up() or Vanish:Up() or Shadowmeld:Up()) then
-		if Trinket.BeaconToTheBeyond:Usable() and ShadowDance:Down() and (not DeeperDaggers.known or DeeperDaggers:Up()) then
-			return UseCooldown(Trinket.BeaconToTheBeyond)
-		elseif Trinket.DragonfireBombDispenser:Usable() and (Player.enemies > 1 or Target.timeToDie > 8) then
-			return UseCooldown(Trinket.DragonfireBombDispenser)
-		elseif Trinket.ElementiumPocketAnvil:Usable() and Player.energy.deficit >= (15 + Player.energy.regen) and ShadowDance:Down() and ShurikenTornado:Down() then
-			return UseCooldown(Trinket.ElementiumPocketAnvil)
-		elseif (Target.boss and Target.timeToDie < 20) or SymbolsOfDeath:Remains() > 6 then
+		if (Target.boss and Target.timeToDie < 20) or SymbolsOfDeath:Remains() > 6 then
 			if Trinket1:Usable() then
 				return UseCooldown(Trinket1)
 			elseif Trinket2:Usable() then
@@ -2948,7 +2944,7 @@ end
 APL[SPEC.SUBTLETY].stealth_cds = function(self)
 --[[
 actions.stealth_cds=variable,name=shd_threshold,value=cooldown.shadow_dance.charges_fractional>=0.75+talent.shadow_dance
-actions.stealth_cds+=/variable,name=rotten_threshold,value=!buff.the_rotten.up|spell_targets.shuriken_storm>1|combo_points<=2&buff.the_rotten.up&!set_bonus.tier30_2pc
+actions.stealth_cds+=/variable,name=rotten_threshold,value=!buff.the_rotten.up|spell_targets.shuriken_storm>1|combo_points<=2&buff.the_rotten.up
 actions.stealth_cds+=/vanish,if=(!talent.danse_macabre|spell_targets.shuriken_storm>=3)&!variable.shd_threshold&combo_points.deficit>1&(cooldown.flagellation.remains>=60|!talent.flagellation|fight_remains<=(30*cooldown.vanish.charges))
 actions.stealth_cds+=/pool_resource,for_next=1,extra_amount=40,if=race.night_elf
 actions.stealth_cds+=/shadowmeld,if=energy>=40&energy.deficit>=10&!variable.shd_threshold&combo_points.deficit>4
@@ -2959,7 +2955,7 @@ actions.stealth_cds+=/shadow_dance,if=(variable.shd_combo_points&(!talent.shadow
 actions.stealth_cds+=/shadow_dance,if=variable.shd_combo_points&fight_remains<cooldown.symbols_of_death.remains|!talent.shadow_dance&dot.rupture.ticking&spell_targets.shuriken_storm<=4&variable.rotten_threshold
 ]]
 	self.shd_threshold = ShadowDance:ChargesFractional() >= (ShadowDance:MaxCharges() - 0.25)
-	self.rotten_threshold = TheRotten:Down() or Player.enemies > 1 or (Player.combo_points.current <= 2 and TheRotten:Up() and Player.set_bonus.t30 < 2)
+	self.rotten_threshold = TheRotten:Down() or Player.enemies > 1 or (Player.combo_points.current <= 2 and TheRotten:Up())
 	if Vanish:Usable() and not self.shd_threshold and Player.combo_points.deficit > 1 and (not DanseMacabre.known or Player.enemies >= 3) and (not Flagellation.known or not Flagellation:Ready(60) or (Target.boss and Target.timeToDie < (30 * Vanish:Charges()))) then
 		return UseCooldown(Vanish)
 	end
@@ -3408,7 +3404,7 @@ end
 
 function UI:UpdateDisplay()
 	Timer.display = 0
-	local border, dim, dim_cd, text_center, text_cd, text_tl, text_tr
+	local border, dim, dim_cd, text_cd, text_center, text_tl, text_tr
 	local channel = Player.channel
 
 	if Opt.dimmer then
@@ -3430,10 +3426,12 @@ function UI:UpdateDisplay()
 			border = 'freecast'
 		end
 	end
-	if Player.cd and Player.cd.requires_react then
-		local react = Player.cd:React()
-		if react > 0 then
-			text_cd = format('%.1f', react)
+	if Player.cd then
+		if Player.cd.requires_react then
+			local react = Player.cd:React()
+			if react > 0 then
+				text_cd = format('%.1f', react)
+			end
 		end
 	end
 	if Player.pool_energy then
@@ -3487,7 +3485,7 @@ function UI:UpdateCombat()
 
 	if Player.main then
 		assassinPanel.icon:SetTexture(Player.main.icon)
-		Player.main_freecast = (Player.main.energy_cost > 0 and Player.main:EnergyCost() == 0) or (Player.main.cp_cost > 0 and Player.main:CPCost() == 0) or (Player.main.Free and Player.main:Free())
+		Player.main_freecast = Player.main:Free()
 	end
 	if Player.cd then
 		assassinCooldownPanel.icon:SetTexture(Player.cd.icon)
@@ -3595,7 +3593,7 @@ CombatEvent.UNIT_DIED = function(event, srcGUID, dstGUID)
 	if not uid or Target.Dummies[uid] then
 		return
 	end
-	trackAuras:Remove(dstGUID)
+	TrackedAuras:Remove(dstGUID)
 	if Opt.auto_aoe then
 		AutoAoe:Remove(dstGUID)
 	end
@@ -3629,6 +3627,8 @@ CombatEvent.SWING_MISSED = function(event, srcGUID, dstGUID, missType, offHand, 
 	end
 end
 
+--local UnknownSpell = {}
+
 CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellSchool, missType, overCap, powerType)
 	if srcGUID ~= Player.guid then
 		return
@@ -3636,7 +3636,15 @@ CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellS
 
 	local ability = spellId and Abilities.bySpellId[spellId]
 	if not ability then
-		--log(format('EVENT %s TRACK CHECK FOR UNKNOWN %s ID %d', event, type(spellName) == 'string' and spellName or 'Unknown', spellId or 0))
+--[[
+		if not UnknownSpell[event] then
+			UnknownSpell[event] = {}
+		end
+		if not UnknownSpell[event][spellId] then
+			UnknownSpell[event][spellId] = true
+			log(format('%.3f EVENT %s TRACK CHECK FOR UNKNOWN %s ID %d FROM %s ON %s', Player.time, event, type(spellName) == 'string' and spellName or 'Unknown', spellId or 0, srcGUID, dstGUID))
+		end
+]]
 		return
 	end
 
@@ -3835,10 +3843,6 @@ function Events:PLAYER_EQUIPMENT_CHANGED()
 		end
 	end
 
-	Player.set_bonus.t29 = (Player:Equipped(200369) and 1 or 0) + (Player:Equipped(200371) and 1 or 0) + (Player:Equipped(200372) and 1 or 0) + (Player:Equipped(200373) and 1 or 0) + (Player:Equipped(200374) and 1 or 0)
-	Player.set_bonus.t30 = (Player:Equipped(202495) and 1 or 0) + (Player:Equipped(202496) and 1 or 0) + (Player:Equipped(202497) and 1 or 0) + (Player:Equipped(202498) and 1 or 0) + (Player:Equipped(202500) and 1 or 0)
-	Player.set_bonus.t31 = (Player:Equipped(207234) and 1 or 0) + (Player:Equipped(207235) and 1 or 0) + (Player:Equipped(207236) and 1 or 0) + (Player:Equipped(207237) and 1 or 0) + (Player:Equipped(207239) and 1 or 0)
-	Player.set_bonus.t32 = (Player:Equipped(217206) and 1 or 0) + (Player:Equipped(217207) and 1 or 0) + (Player:Equipped(217208) and 1 or 0) + (Player:Equipped(217209) and 1 or 0) + (Player:Equipped(217210) and 1 or 0)
 	Player.set_bonus.t33 = (Player:Equipped(212036) and 1 or 0) + (Player:Equipped(212037) and 1 or 0) + (Player:Equipped(212038) and 1 or 0) + (Player:Equipped(212039) and 1 or 0) + (Player:Equipped(212041) and 1 or 0)
 
 	Player:ResetSwing(true, true)
