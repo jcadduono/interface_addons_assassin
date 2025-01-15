@@ -134,6 +134,7 @@ local function InitOpts()
 		pot = false,
 		trinket = true,
 		heal = 60,
+		multipliers = true,
 		poisons = true,
 		last_poison = {
 			lethal = false,
@@ -239,6 +240,7 @@ local Player = {
 		current = 0,
 		max = 100,
 		deficit = 100,
+		pct = 0,
 		regen = 0,
 	},
 	combo_points = {
@@ -978,7 +980,10 @@ function Ability:ApplyAura(guid)
 		return
 	end
 	local aura = self.aura_targets[guid] or {}
-	aura.expires = Player.time + self:Duration()
+	aura.expires = Player.time + self:Duration(self.next_combo_points, self.next_applied_by)
+	if self.next_multiplier then
+		aura.multiplier = self.next_multiplier
+	end
 	self.aura_targets[guid] = aura
 	return aura
 end
@@ -991,15 +996,29 @@ function Ability:RefreshAura(guid, extend)
 	if not aura then
 		return self:ApplyAura(guid)
 	end
-	local duration = self:Duration()
+	local duration = self:Duration(self.next_combo_points, self.next_applied_by)
 	aura.expires = max(aura.expires, Player.time + min(duration * (self.no_pandemic and 1.0 or 1.3), (aura.expires - Player.time) + (extend or duration)))
+	if self.next_multiplier and (
+		not self.retain_higher_multiplier or
+		not aura.multiplier or
+		self.next_multiplier > aura.multiplier
+	) then
+		aura.multiplier = self.next_multiplier
+	end
 	return aura
 end
 
 function Ability:RefreshAuraAll(extend)
-	local duration = self:Duration()
+	local duration = self:Duration(self.next_combo_points, self.next_applied_by)
 	for guid, aura in next, self.aura_targets do
 		aura.expires = max(aura.expires, Player.time + min(duration * (self.no_pandemic and 1.0 or 1.3), (aura.expires - Player.time) + (extend or duration)))
+		if self.next_multiplier and (
+			not self.retain_higher_multiplier or
+			not aura.multiplier or
+			self.next_multiplier > aura.multiplier
+		) then
+			aura.multiplier = self.next_multiplier
+		end
 	end
 end
 
@@ -1007,6 +1026,11 @@ function Ability:RemoveAura(guid)
 	if self.aura_targets[guid] then
 		self.aura_targets[guid] = nil
 	end
+end
+
+function Ability:Multiplier(guid)
+	local aura = self.aura_targets[guid or Target.guid]
+	return aura and aura.multiplier or 0
 end
 
 -- End DoT tracking
@@ -1031,6 +1055,7 @@ CrimsonVial.energy_cost = 20
 local Eviscerate = Ability:Add(196819, false, true)
 Eviscerate.energy_cost = 35
 Eviscerate.cp_cost = 1
+Eviscerate.next_combo_points = 0
 local Kick = Ability:Add(1766, false, true)
 Kick.cooldown_duration = 15
 Kick.triggers_gcd = false
@@ -1038,10 +1063,12 @@ local KidneyShot = Ability:Add(408, false, true)
 KidneyShot.buff_duration = 1
 KidneyShot.energy_cost = 25
 KidneyShot.cp_cost = 1
+KidneyShot.next_combo_points = 0
 local Rupture = Ability:Add(1943, false, true)
 Rupture.buff_duration = 4
 Rupture.energy_cost = 25
 Rupture.cp_cost = 1
+Rupture.next_combo_points = 0
 Rupture.tick_interval = 2
 Rupture.hasted_ticks = true
 Rupture:Track()
@@ -1057,6 +1084,7 @@ local SliceAndDice = Ability:Add(315496, true, true)
 SliceAndDice.buff_duration = 6
 SliceAndDice.energy_cost = 25
 SliceAndDice.cp_cost = 1
+SliceAndDice.next_combo_points = 0
 local Stealth = Ability:Add(1784, true, true, 115191)
 local Vanish = Ability:Add(1856, true, true, 11327)
 Vanish.cooldown_duration = 120
@@ -1094,21 +1122,31 @@ Sepsis.energy_cost = 25
 Sepsis.tick_interval = 1
 Sepsis.buff = Ability:Add(375939, true, true)
 Sepsis.buff.buff_duration = 10
-local Shiv = Ability:Add(5938, false, true)
-Shiv.cooldown_duration = 25
-Shiv.energy_cost = 20
+local Shiv = Ability:Add(5938, false, true, 319504)
+Shiv.buff_duration = 8
+Shiv.cooldown_duration = 30
+Shiv.energy_cost = 30
+Shiv.requires_charge = true
 local Subterfuge = Ability:Add(108208, true, true, 115192)
 Subterfuge.buff_duration = 3
+Subterfuge.talent_node = 90688
 local ThistleTea = Ability:Add(381623, true, true)
 ThistleTea.buff_duration = 6
-ThistleTea.cooldown_duration = 3
+ThistleTea.cooldown_duration = 60
 ThistleTea.requires_charge = true
 local TightSpender = Ability:Add(381621, true, true)
 local Vigor = Ability:Add(14983, false, true)
+local VirulentPoisons = Ability:Add(381543, true, true)
 local Weaponmaster = Ability:Add({193537, 200733}, false, true)
 ------ Procs
 
 ------ Poisons
+local AmplifyingPoison = Ability:Add(381664, true, true)
+AmplifyingPoison.buff_duration = 3600
+AmplifyingPoison.dot = Ability:Add(383414, false, true)
+AmplifyingPoison.dot.buff_duration = 12
+AmplifyingPoison.dot.max_stack = 20
+AmplifyingPoison.dot:Track()
 local AtrophicPoison = Ability:Add(381637, true, true)
 AtrophicPoison.buff_duration = 3600
 AtrophicPoison.dot = Ability:Add(392388)
@@ -1137,56 +1175,85 @@ WoundPoison.dot.buff_duration = 12
 WoundPoison.dot:Track()
 ---- Assassination
 local Envenom = Ability:Add(32645, true, true)
-Envenom.buff_duration = 1
-Envenom.energy_cost = 25
+Envenom.buff_duration = 0
+Envenom.energy_cost = 35
 Envenom.cp_cost = 1
+Envenom.next_combo_points = 0
+Envenom.max_stack = 1
 local FanOfKnives = Ability:Add(51723, false, true)
 FanOfKnives.energy_cost = 35
 FanOfKnives:AutoAoe(true)
 local Garrote = Ability:Add(703, false, true)
 Garrote.buff_duration = 18
-Garrote.cooldown_duration = 15
+Garrote.cooldown_duration = 6
 Garrote.energy_cost = 45
 Garrote.tick_interval = 2
 Garrote.hasted_ticks = true
 Garrote:Track()
 local Mutilate = Ability:Add(1329, false, true)
-Mutilate.energy_cost = 55
-local SurgeOfToxins = Ability:Add(192425, false, true)
-SurgeOfToxins.buff_duration = 5
-local Vendetta = Ability:Add(79140, false, true)
-Vendetta.buff_duration = 20
-Vendetta.cooldown_duration = 120
-Vendetta.triggers_gcd = false
-local VirulentPoisons = Ability:Add(252277, true, true)
-VirulentPoisons.buff_duration = 6
+Mutilate.energy_cost = 50
 ------ Talents
-local Anticipation = Ability:Add(114015, false, true)
-local DeathFromAbove = Ability:Add(152150, false, true)
-DeathFromAbove.cooldown_duration = 20
-DeathFromAbove.energy_cost = 25
-DeathFromAbove.cp_cost = 1
-DeathFromAbove:AutoAoe(true)
-local ElaboratePlanning = Ability:Add(193640, false, true, 193641)
-ElaboratePlanning.buff_duration = 5
-local Exsanguinate = Ability:Add(200806, false, true)
-Exsanguinate.cooldown_duration = 45
-Exsanguinate.energy_cost = 25
-local Hemorrhage = Ability:Add(16511, false, true)
-Hemorrhage.buff_duration = 20
-Hemorrhage.energy_cost = 30
-local MasterPoisoner = Ability:Add(196864, false, true)
-local SerratedBoneSpike = Ability:Add(385424, false, true)
-SerratedBoneSpike.buff_duration = 600
-SerratedBoneSpike.cooldown_duration = 30
-SerratedBoneSpike.energy_cost = 15
-SerratedBoneSpike.requires_charge = true
+local ArterialPrecision = Ability:Add(400783, false, true)
+local Blindside = Ability:Add(328085, true, true, 121153)
+Blindside.buff_duration = 10
+Blindside.max_stack = 1
+local CausticSpatter = Ability:Add(421975, false, true, 421976)
+CausticSpatter.buff_duration = 10
+CausticSpatter.damage = Ability:Add(421979, false, true)
+CausticSpatter.damage:AutoAoe()
+local CrimsonTempest = Ability:Add(121411, false, true)
+CrimsonTempest.buff_duration = 4
+CrimsonTempest.energy_cost = 45
+CrimsonTempest.cp_cost = 1
+CrimsonTempest.next_combo_points = 0
+CrimsonTempest.tick_interval = 2
+CrimsonTempest.hasted_ticks = true
+CrimsonTempest:Track()
+CrimsonTempest:AutoAoe(false, 'apply')
+local DashingScoundrel = Ability:Add(381797, true, true)
+local Deathmark = Ability:Add(360194, false, true)
+Deathmark.buff_duration = 16
+Deathmark.cooldown_duration = 120
+Deathmark:Track()
+local DragonTemperedBlades = Ability:Add(381801, true, true)
+local ImprovedGarrote = Ability:Add(381632, true, true, 392403)
+ImprovedGarrote.fading = Ability:Add(392401, true, true)
+ImprovedGarrote.fading.buff_duration = 6
+local IndiscriminateCarnage = Ability:Add(381802, true, true, 385754)
+IndiscriminateCarnage.fading = Ability:Add(385747, true, true)
+IndiscriminateCarnage.fading.buff_duration = 6
+local Kingsbane = Ability:Add(385627, false, true)
+Kingsbane.buff_duration = 14
+Kingsbane.cooldown_duration = 60
+Kingsbane.energy_cost = 35
+Kingsbane:Track()
+Kingsbane.buff = Ability:Add(394095, true, true)
+Kingsbane.buff.buff_duration = 14
+local LightweightShiv = Ability:Add(394983, false, true)
+local MasterAssassin = Ability:Add(255989, true, true, 256735)
+MasterAssassin.fading = Ability:Add(470676, true, true)
+MasterAssassin.fading.buff_duration = 6
+local SanguineStratagem = Ability:Add(457512, true, true)
+local ScentOfBlood = Ability:Add(381799, true, true, 394080)
+ScentOfBlood.buff_duration = 24
+ScentOfBlood.max_stack = 20
+ScentOfBlood.talent_node = 90775
+local ShroudedSuffocation = Ability:Add(385478, false, true)
+local SerratedBoneSpike = Ability:Add(455352, true, true, 455366)
+SerratedBoneSpike.buff_duration = 3600
+SerratedBoneSpike.max_stack = 3
+SerratedBoneSpike.dot = Ability:Add(394036, false, true)
+SerratedBoneSpike.dot.buff_duration = 3600
+SerratedBoneSpike.dot.tick_interval = 3
+SerratedBoneSpike.dot.hasted_ticks = true
 local TinyToxicBlade = Ability:Add(381800, true, true)
+local ThrownPrecision = Ability:Add(381629, false, true)
 local ToxicBlade = Ability:Add(245388, false, true, 245389)
 ToxicBlade.buff_duration = 9
 ToxicBlade.cooldown_duration = 25
 ToxicBlade.energy_cost = 20
-local VenomRush = Ability:Add(152152, false, true)
+local ViciousVenoms = Ability:Add(381634, false, true)
+ViciousVenoms.talent_node = 90772
 ------ Procs
 
 ---- Outlaw
@@ -1198,6 +1265,7 @@ BetweenTheEyes.buff_duration = 3
 BetweenTheEyes.cooldown_duration = 45
 BetweenTheEyes.energy_cost = 25
 BetweenTheEyes.cp_cost = 1
+BetweenTheEyes.next_combo_points = 0
 local BladeFlurry = Ability:Add(13877, true, true)
 BladeFlurry.cooldown_duration = 30
 BladeFlurry.buff_duration = 12
@@ -1206,6 +1274,7 @@ BladeFlurry.cleave:AutoAoe()
 local Dispatch = Ability:Add(2098, false, true)
 Dispatch.energy_cost = 35
 Dispatch.cp_cost = 1
+Dispatch.next_combo_points = 0
 local PistolShot = Ability:Add(185763, false, true)
 PistolShot.buff_duration = 6
 PistolShot.energy_cost = 40
@@ -1290,6 +1359,7 @@ SymbolsOfDeath.cooldown_duration = 30
 local BlackPowder = Ability:Add(319175, false, true)
 BlackPowder.energy_cost = 35
 BlackPowder.cp_cost = 1
+BlackPowder.next_combo_points = 0
 BlackPowder:AutoAoe(true)
 local DanseMacabre = Ability:Add(382528, true, true, 393969)
 local Gloomblade = Ability:Add(200758, false, true)
@@ -1332,6 +1402,7 @@ local SecretTechnique = Ability:Add(280719, true, true)
 SecretTechnique.cooldown_duration = 60
 SecretTechnique.energy_cost = 30
 SecretTechnique.cp_cost = 1
+SecretTechnique.next_combo_points = 0
 SecretTechnique:AutoAoe(true)
 local ShadowBlades = Ability:Add(121471, true, true)
 ShadowBlades.buff_duration = 20
@@ -1349,9 +1420,29 @@ local TheRotten = Ability:Add(382015, true, true, 394203)
 TheRotten.buff_duration = 30
 -- Hero talents
 ---- Deathstalker
-
+local ClearTheWitnesses = Ability:Add(457053, true, true, 457178)
+ClearTheWitnesses.buff_duration = 12
+ClearTheWitnesses.max_stack = 1
+local CorruptTheBlood = Ability:Add(457066, false, true, 457133)
+CorruptTheBlood.max_stack = 10
+local DarkestNight = Ability:Add(457058, true, true, 457280)
+DarkestNight.buff_duration = 30
+local DeathstalkersMark = Ability:Add(457052, false, true, 457129)
+DeathstalkersMark.buff_duration = 60
+DeathstalkersMark.max_stack = 3
+local FollowTheBlood = Ability:Add(457068, true, true)
+local MomentumOfDespair = Ability:Add(457067, true, true, 457115)
+MomentumOfDespair.buff_duration = 12
 ---- Fatebound
-
+local HandOfFate = Ability:Add(452536, true, true)
+local LuckyCoin = Ability:Add(452562, true, true)
+local FateboundCoin = Ability:Add(452542, false, true)
+FateboundCoin.Heads = Ability:Add(452923, true, true)
+FateboundCoin.Heads.buff_duration = 15
+FateboundCoin.Heads.max_stack = 99
+FateboundCoin.Tails = Ability:Add(452917, true, true)
+FateboundCoin.Tails.buff_duration = 15
+FateboundCoin.Tails.max_stack = 99
 ---- Trickster
 
 -- Tier bonuses
@@ -1581,6 +1672,8 @@ function Player:UpdatePoisons()
 	if not Opt.last_poison.lethal then
 		if DeadlyPoison.known then
 			Opt.last_poison.lethal = DeadlyPoison.spellId
+		elseif AmplifyingPoison.known then
+			Opt.last_poison.lethal = AmplifyingPoison.spellId
 		elseif InstantPoison.known then
 			Opt.last_poison.lethal = InstantPoison.spellId
 		elseif WoundPoison.known then
@@ -1635,6 +1728,9 @@ function Player:UpdateKnown()
 		end
 	end
 
+	DeadlyPoison.dot.known = DeadlyPoison.known
+	WoundPoison.dot.known = WoundPoison.known
+	AmplifyingPoison.dot.known = AmplifyingPoison.known
 	Sepsis.buff.known = Sepsis.known
 	Broadside.known = RollTheBones.known
 	BuriedTreasure.known = RollTheBones.known
@@ -1651,8 +1747,14 @@ function Player:UpdateKnown()
 		Backstab.known = false
 	end
 	ShadowTechniques.auto_count = 0
+	Kingsbane.buff.known = Kingsbane.known
+	ImprovedGarrote.fading.known = ImprovedGarrote.known
+	IndiscriminateCarnage.fading.known = IndiscriminateCarnage.known
+	MasterAssassin.fading.known = MasterAssassin.known
+	SerratedBoneSpike.dot.known = SerratedBoneSpike.known
+	CausticSpatter.damage.known = CausticSpatter.known
 
-	self.combo_points.max_spend = 5 + (DeeperStratagem.known and 1 or 0) + (DeviousStratagem.known and 1 or 0) + (SecretStratagem.known and 1 or 0)
+	self.combo_points.max_spend = 5 + (DeeperStratagem.known and 1 or 0) + (DeviousStratagem.known and 1 or 0) + (SecretStratagem.known and 1 or 0) + (SanguineStratagem.known and 1 or 0)
 	self:UpdatePoisons()
 
 	Abilities:Update()
@@ -1755,6 +1857,7 @@ function Player:Update()
 	self.energy.current = UnitPower('player', 3) + (self.energy.regen * self.execute_remains)
 	self.energy.current = clamp(self.energy.current, 0, self.energy.max)
 	self.energy.deficit = self.energy.max - self.energy.current
+	self.energy.pct = (self.energy.current / self.energy.max) * 100
 	speed, max_speed = GetUnitSpeed('player')
 	self.moving = speed ~= 0
 	self.movement_speed = max_speed / 7 * 100
@@ -1921,7 +2024,7 @@ function Ability:EnergyCost()
 		cost = cost - (cost * 0.15)
 	end
 	if TightSpender.known and self.cp_cost > 0 then
-		cost = cost - (cost * 0.10)
+		cost = cost - (cost * 0.06)
 	end
 	return cost
 end
@@ -1930,11 +2033,19 @@ function Ambush:Usable(...)
 	if not (
 		Player.stealthed or
 		(Audacity.known and Audacity:Up()) or
-		(Sepsis.known and Sepsis.buff:Up())
+		(Sepsis.known and Sepsis.buff:Up()) or
+		(Blindside.known and Blindside:Up())
 	) then
 		return false
 	end
 	return Ability.Usable(self, ...)
+end
+
+function Ambush:EnergyCost()
+	if Blindside.known and Blindside:Up() then
+		return 0
+	end
+	return Ability.EnergyCost(self)
 end
 
 function Shadowstrike:Usable(...)
@@ -1965,24 +2076,28 @@ function DanseMacabre:UsedFor(ability)
 	return Player.danse_stacks >= 1 and ability.last_used >= self.last_gained
 end
 
-function BetweenTheEyes:Duration()
-	return self.buff_duration + (3 * Player.combo_points.current)
+function BetweenTheEyes:Duration(comboPoints, appliedBy)
+	return self.buff_duration + (3 * (comboPoints or Player.combo_points.current))
 end
 
 function BetweenTheEyes:Free()
 	return Crackshot.known and Player.stealthed_nomeld
 end
 
-function Envenom:Duration()
-	return self.buff_duration + Player.combo_points.current
+function Envenom:Duration(comboPoints, appliedBy)
+	return (comboPoints or Player.combo_points.current)
 end
 
-function Rupture:Duration()
-	return self.buff_duration + (4 * Player.combo_points.current)
+function Rupture:Duration(comboPoints, appliedBy)
+	return self.buff_duration + (4 * (comboPoints or Player.combo_points.current)) + (CorruptTheBlood.known and 3 or 0)
 end
 
-function SliceAndDice:Duration()
-	return self.buff_duration + (6 * Player.combo_points.current)
+function CrimsonTempest:Duration(comboPoints, appliedBy)
+	return self.buff_duration + (2 * (comboPoints or Player.combo_points.current))
+end
+
+function SliceAndDice:Duration(comboPoints, appliedBy)
+	return self.buff_duration + (6 * (comboPoints or Player.combo_points.current))
 end
 
 function Opportunity:MaxStack()
@@ -2020,7 +2135,7 @@ local function TickingPoisoned(self)
 	local count, guid, aura, poisoned = 0
 	for guid, aura in next, self.aura_targets do
 		if aura.expires - Player.time > Player.execute_remains then
-			poisoned = DeadlyPoison.dot.aura_targets[guid] or WoundPoison.dot.aura_targets[guid]
+			poisoned = DeadlyPoison.dot.aura_targets[guid] or WoundPoison.dot.aura_targets[guid] or AmplifyingPoison.dot.aura_targets[guid]
 			if poisoned then
 				if poisoned.expires - Player.time > Player.execute_remains then
 					count = count + 1
@@ -2066,7 +2181,7 @@ CountTheOdds.triggers = {
 EchoingReprimand.finishers = {
 	[BetweenTheEyes] = true,
 	[BlackPowder] = true,
-	[DeathFromAbove] = true,
+	[CrimsonTempest] = true,
 	[Dispatch] = true,
 	[Envenom] = true,
 	[Eviscerate] = true,
@@ -2167,6 +2282,7 @@ function InstantPoison:CastSuccess(...)
 end
 WoundPoison.CastSuccess = InstantPoison.CastSuccess
 DeadlyPoison.CastSuccess = InstantPoison.CastSuccess
+AmplifyingPoison.CastSuccess = InstantPoison.CastSuccess
 
 function AtrophicPoison:CastSuccess(...)
 	Ability.CastSuccess(self, ...)
@@ -2181,6 +2297,67 @@ function Vanish:CastSuccess(...)
 	Player.stealth_time = Player.time
 end
 Shadowmeld.CastSuccess = Vanish.CastSuccess
+
+function FollowTheBlood:Remains()
+	if Rupture:Ticking() >= 2 then
+		return Rupture:HighestRemains()
+	end
+	return 0
+end
+
+function ImprovedGarrote:Remains(aura)
+	local remains = Ability.Remains(self)
+	if aura and remains < 600 then
+		return 0
+	end
+	return max(remains, self.fading:Remains())
+end
+
+function IndiscriminateCarnage:Remains(aura)
+	local remains = Ability.Remains(self)
+	if aura and remains < 600 then
+		return 0
+	end
+	return max(remains, self.fading:Remains())
+end
+
+function MasterAssassin:Remains(aura)
+	local remains = Ability.Remains(self)
+	if aura and remains < 600 then
+		return 0
+	end
+	return max(remains, self.fading:Remains())
+end
+
+function Subterfuge:Duration()
+	return self.rank * self.buff_duration
+end
+
+function Rupture:NextMultiplier()
+	local multiplier, aura = 1.00
+	for i = 1, 40 do
+		aura = UnitAura('player', i, 'HELPFUL|PLAYER')
+		if not aura then
+			break
+		elseif Finality.Rupture:Match(aura.spellId) then
+			multiplier = multiplier * 1.25
+		end
+	end
+	return multiplier
+end
+
+function Garrote:NextMultiplier()
+	local multiplier, aura = 1.00
+	for i = 1, 40 do
+		aura = UnitAura('player', i, 'HELPFUL|PLAYER')
+		if not aura then
+			break
+		elseif ImprovedGarrote:Match(aura.spellId) or ImprovedGarrote.fading:Match(aura.spellId) then
+			multiplier = multiplier * 1.50
+		end
+	end
+	return multiplier
+end
 
 -- End Ability Modifications
 
@@ -2213,172 +2390,359 @@ APL[SPEC.ASSASSINATION].Main = function(self)
 		end
 	end
 	if Player:TimeInCombat() == 0 then
-		if Opt.poisons then
-			if Player.poison.lethal and Player.poison.lethal:Usable() and Player.poison.lethal:Remains() < 300 then
-				return Player.poison.lethal
-			end
-			if Player.poison.nonlethal and Player.poison.nonlethal:Usable() and Player.poison.nonlethal:Remains() < 300 then
-				return Player.poison.nonlethal
-			end
-		end
-		if not Player:InArenaOrBattleground() then
-		end
-		if not Player.stealthed_nomeld then
-			return Stealth
-		end
-	else
-
+		local apl = self:precombat()
+		if apl then return apl end
 	end
-	Player.energy_regen_combined = Player.energy.regen + (Garrote:TickingPoisoned() + Rupture:TickingPoisoned()) * (VenomRush.known and 10 or 7) / 2
-	Player.energy_time_to_max_combined = Player.energy.deficit / Player.energy_regen_combined
+--[[
+actions=stealth
+actions+=/kick
+actions+=/variable,name=single_target,value=spell_targets.fan_of_knives<2
+actions+=/variable,name=regen_saturated,value=energy.regen_combined>30
+actions+=/variable,name=in_cooldowns,value=dot.deathmark.ticking|dot.kingsbane.ticking|debuff.shiv.up
+actions+=/variable,name=clip_envenom,value=buff.envenom.up&buff.envenom.remains.1<=1
+actions+=/variable,name=upper_limit_energy,value=energy.pct>=(50-10*talent.vicious_venoms.rank)
+actions+=/variable,name=avoid_tea,value=energy>40+50+5*talent.vicious_venoms.rank
+actions+=/variable,name=cd_soon,value=cooldown.kingsbane.remains<3&!cooldown.kingsbane.ready
+actions+=/variable,name=not_pooling,value=variable.in_cooldowns|!variable.cd_soon&variable.avoid_tea&buff.darkest_night.up|!variable.cd_soon&variable.avoid_tea&variable.clip_envenom|variable.upper_limit_energy|fight_remains<=20
+actions+=/variable,name=scent_effective_max_stacks,value=(spell_targets.fan_of_knives*talent.scent_of_blood.rank*2)>?20
+actions+=/variable,name=scent_saturation,value=buff.scent_of_blood.stack>=variable.scent_effective_max_stacks
+actions+=/call_action_list,name=stealthed,if=stealthed.rogue|stealthed.improved_garrote|master_assassin_remains>0
+actions+=/call_action_list,name=cds
+actions+=/call_action_list,name=core_dot
+actions+=/call_action_list,name=aoe_dot,if=!variable.single_target
+actions+=/call_action_list,name=direct
+actions+=/arcane_torrent,if=energy.deficit>=15+energy.regen_combined
+actions+=/arcane_pulse
+actions+=/lights_judgment
+actions+=/bag_of_tricks
+]]
+	self.use_cds = Target.boss or Target.player or Target.timeToDie > (Opt.cd_ttd - min(6, Player.enemies - 1)) or (Kingsbane.known and Kingsbane:Ticking() > 0) or (Deathmark.known and Deathmark:Ticking() > 0)
+	self.single_target = Player.enemies < 2
+	self.energy_regen_combined = Player.energy.regen + (Garrote:TickingPoisoned() + Rupture:TickingPoisoned()) * 8 / 2
+	self.regen_saturated = self.energy_regen_combined > 30
+	self.in_cooldowns = Deathmark:Ticking() > 0 or Kingsbane:Ticking() > 0 or Shiv:Up()
+	self.clip_envenom = Envenom:Up() and Envenom:Remains() <= 1
+	self.upper_limit_energy = Player.energy.pct >= (50 - (10 * ViciousVenoms.rank))
+	self.avoid_tea = Player.energy.current > (40 + 50 + (5 * ViciousVenoms.rank))
+	self.cd_soon = between(Kingsbane:Cooldown(), 0.1, 3)
+	self.not_pooling = (
+		self.in_cooldowns or
+		self.upper_limit_energy or
+		(Target.boss and Target.timeToDie <= 20) or
+		(not self.cd_soon and self.avoid_tea and (self.clip_envenom or DarkestNight:Up()))
+	)
+	self.scent_effective_max_stacks = min(ScentOfBlood:MaxStack(), Player.enemies * ScentOfBlood.rank * 2)
+	self.scent_saturation = ScentOfBlood:Stack() >= self.scent_effective_max_stacks
 	local apl
-	if Player:TimeInCombat() > 0 then
+	if Player.stealthed or (ImprovedGarrote.known and ImprovedGarrote:Up()) or (MasterAssassin.known and MasterAssassin:Up()) then
+		apl = self:stealthed()
+		if apl then return apl end
+	end
+	if self.use_cds then
 		apl = self:cds()
 		if apl then return apl end
 	end
-	if Player.enemies > 2 then
-		return self:aoe()
-	end
-	if Player.stealthed then
-		return self:stealthed()
-	end
-	apl = self:maintain()
 	if apl then return apl end
-	if not Exsanguinate.known or Exsanguinate:Cooldown() > 2 then
-		apl = self:finish()
+	apl = self:core_dot()
+	if apl then return apl end
+	if not self.single_target then
+		apl = self:aoe_dot()
 		if apl then return apl end
 	end
-	if Player.combo_points.deficit > (Anticipation.known and 2 or 1) or Player.energy.deficit <= 25 + Player.energy_regen_combined then
-		apl = self:build()
-		if apl then return apl end
+	apl = self:direct()
+	if apl then return apl end
+end
+
+APL[SPEC.ASSASSINATION].precombat_variables = function(self)
+--[[
+actions.precombat+=/variable,name=trinket_sync_slot,value=1,if=trinket.1.has_stat.any_dps&(!trinket.2.has_stat.any_dps|trinket.1.cooldown.duration>=trinket.2.cooldown.duration)&!trinket.2.is.treacherous_transmitter|trinket.1.is.treacherous_transmitter
+actions.precombat+=/variable,name=trinket_sync_slot,value=2,if=trinket.2.has_stat.any_dps&(!trinket.1.has_stat.any_dps|trinket.2.cooldown.duration>trinket.1.cooldown.duration)&!trinket.1.is.treacherous_transmitter|trinket.2.is.treacherous_transmitter
+actions.precombat+=/variable,name=effective_spend_cp,value=cp_max_spend-2<?5*talent.hand_of_fate
+]]
+	self.effective_spend_cp = max(HandOfFate.known and 5 or 0, Player.combo_points.max_spend - 2)
+end
+
+APL[SPEC.ASSASSINATION].precombat = function(self)
+--[[
+actions.precombat=apply_poison
+actions.precombat+=/snapshot_stats
+actions.precombat+=/stealth
+actions.precombat+=/slice_and_dice,precombat_seconds=1
+]]
+	if Opt.poisons then
+		if Player.poison.lethal and Player.poison.lethal:Usable() and Player.poison.lethal:Remains() < 300 then
+			return Player.poison.lethal
+		end
+		if Player.poison.nonlethal and Player.poison.nonlethal:Usable() and Player.poison.nonlethal:Remains() < 300 then
+			return Player.poison.nonlethal
+		end
+	end
+	if Stealth:Usable() then
+		return Stealth
+	end
+	if SliceAndDice:Usable() and SliceAndDice:Remains() < (4 * Player.combo_points.current) and Player.combo_points.current >= 2 and Target.timeToDie > SliceAndDice:Remains() then
+		return SliceAndDice
 	end
 end
 
-APL[SPEC.ASSASSINATION].aoe = function(self)
+APL[SPEC.ASSASSINATION].aoe_dot = function(self)
 --[[
-actions.aoe=envenom,if=!buff.envenom.up&combo_points>=cp_max_spend
-actions.aoe+=/rupture,cycle_targets=1,if=combo_points>=cp_max_spend&refreshable&(pmultiplier<=1|remains<=tick_time)&(!exsanguinated|remains<=tick_time*2)&target.time_to_die-remains>4
-actions.aoe+=/garrote,cycle_targets=1,if=talent.subterfuge.enabled&stealthed.rogue&refreshable&!exsanguinated
-actions.aoe+=/envenom,if=combo_points>=cp_max_spend
-actions.aoe+=/fan_of_knives
+actions.aoe_dot=variable,name=dot_finisher_condition,value=combo_points>=variable.effective_spend_cp&(pmultiplier<=1)
+actions.aoe_dot+=/crimson_tempest,target_if=min:remains,if=spell_targets>=2&variable.dot_finisher_condition&refreshable&target.time_to_die-remains>6
+actions.aoe_dot+=/garrote,cycle_targets=1,if=combo_points.deficit>=1&(pmultiplier<=1)&refreshable&!variable.regen_saturated&target.time_to_die-remains>12
+actions.aoe_dot+=/rupture,cycle_targets=1,if=variable.dot_finisher_condition&refreshable&(!dot.kingsbane.ticking|buff.cold_blood.up)&(!variable.regen_saturated&(talent.scent_of_blood.rank=2|talent.scent_of_blood.rank<=1&(buff.indiscriminate_carnage.up|target.time_to_die-remains>15)))&target.time_to_die-remains>(7+(talent.dashing_scoundrel*5)+(variable.regen_saturated*6))&!buff.darkest_night.up
+actions.aoe_dot+=/rupture,cycle_targets=1,if=variable.dot_finisher_condition&refreshable&(!dot.kingsbane.ticking|buff.cold_blood.up)&variable.regen_saturated&!variable.scent_saturation&target.time_to_die-remains>19&!buff.darkest_night.up
+actions.aoe_dot+=/garrote,if=refreshable&combo_points.deficit>=1&(pmultiplier<=1|remains<=tick_time&spell_targets.fan_of_knives>=3)&(remains<=tick_time*2&spell_targets.fan_of_knives>=3)&(target.time_to_die-remains)>4&master_assassin_remains=0
 ]]
-	if Envenom:Usable() and Envenom:Down() and Player.combo_points.effective >= Player.combo_points.max_spend then
-		return Envenom
+	self.dot_finisher_condition = Player.combo_points.current >= self.effective_spend_cp
+	if CrimsonTempest:Usable() and Player.enemies >= 2 and self.dot_finisher_condition and CrimsonTempest:Refreshable() and (Target.timeToDie - CrimsonTempest:Remains()) > 6 then
+		return CrimsonTempest
 	end
-	if Rupture:Usable() and Player.combo_points.effective >= Player.combo_points.max_spend and Rupture:Refreshable() and Target.timeToDie - Rupture:Remains() > 4 then
-		return Rupture
-	end
-	if Subterfuge.known and Garrote:Usable() and Player.stealthed and Garrote:Refreshable() then
+	if Garrote:Usable() and Player.combo_points.deficit >= 1 and Garrote:Multiplier() <= 1 and Garrote:Refreshable() and not self.regen_saturated and (Target.timeToDie - Garrote:Remains()) > 12 then
 		return Garrote
 	end
-	if Envenom:Usable() and Player.combo_points.effective >= Player.combo_points.max_spend then
-		return Envenom
+	if Rupture:Usable() and self.dot_finisher_condition and Rupture:Refreshable() and not self.regen_saturated and DarkestNight:Down() and (Kingsbane:Ticking() == 0 or (ColdBlood.known and ColdBlood:Up())) and (
+		(((ScentOfBlood.rank >= 2 or (IndiscriminateCarnage:Up() or (Target.timeToDie - Rupture:Remains()) > 15))) and (Target.timeToDie - Rupture:Remains()) > (7 + (DashingScoundrel.known and 5 or 0) + (self.regen_satured and 6 or 0))) or
+		(not self.scent_saturation and (Target.timeToDie - Rupture:Remains()) > 19)
+	) then
+		return Rupture
 	end
-	return FanOfKnives
-end
-
-APL[SPEC.ASSASSINATION].build = function(self)
---[[
-actions.build=hemorrhage,if=refreshable
-actions.build+=/hemorrhage,cycle_targets=1,if=refreshable&dot.rupture.ticking&spell_targets.fan_of_knives<2+equipped.insignia_of_ravenholdt
-actions.build+=/fan_of_knives,if=buff.the_dreadlords_deceit.stack>=29
-# Mutilate is worth using over FoK for Exsanguinate builds in some 2T scenarios.
-actions.build+=/mutilate,if=talent.exsanguinate.enabled&(debuff.vendetta.up|combo_points<=2)
-actions.build+=/fan_of_knives,if=spell_targets>1+equipped.insignia_of_ravenholdt
-actions.build+=/fan_of_knives,if=combo_points>=3+talent.deeper_stratagem.enabled&artifact.poison_knives.rank>=5|fok_rotation
-actions.build+=/mutilate,cycle_targets=1,if=dot.deadly_poison_dot.refreshable
-actions.build+=/mutilate
-]]
+	if Garrote:Usable() and Player.combo_points.deficit >= 1 and Garrote:Refreshable() and (Garrote:Multiplier() <= 1 or (Garrote:Remains() <= Garrote:TickTime() and Player.enemies >= 3)) and (Target.timeToDie - Garrote:Remains()) > 4 and (not MasterAssassin.known or MasterAssassin:Down()) then
+		return Garrote
+	end
 end
 
 APL[SPEC.ASSASSINATION].cds = function(self)
-	if ArcaneTorrent:Usable() and Envenom:Down() and Player.energy.deficit >= 15 + Player.energy_regen_combined * Player.gcd_remains * 1.1 then
-		return UseCooldown(ArcaneTorrent)
+--[[
+actions.cds=variable,name=deathmark_ma_condition,value=!talent.master_assassin.enabled|dot.garrote.ticking
+actions.cds+=/variable,name=deathmark_kingsbane_condition,value=!talent.kingsbane|cooldown.kingsbane.remains<=2
+actions.cds+=/variable,name=deathmark_condition,value=!stealthed.rogue&buff.slice_and_dice.remains>5&dot.rupture.ticking&(buff.envenom.up|spell_targets.fan_of_knives>1)&!debuff.deathmark.up&variable.deathmark_ma_condition&variable.deathmark_kingsbane_condition
+actions.cds+=/call_action_list,name=items
+actions.cds+=/invoke_external_buff,name=power_infusion,if=dot.deathmark.ticking
+actions.cds+=/deathmark,if=(variable.deathmark_condition&target.time_to_die>=10)|fight_remains<=20
+actions.cds+=/call_action_list,name=shiv
+actions.cds+=/kingsbane,if=(debuff.shiv.up|cooldown.shiv.remains<6)&(buff.envenom.up|spell_targets.fan_of_knives>1)&(cooldown.deathmark.remains>=50|dot.deathmark.ticking)|fight_remains<=15
+actions.cds+=/thistle_tea,if=!buff.thistle_tea.up&dot.kingsbane.ticking&dot.kingsbane.remains<8|!buff.thistle_tea.up&cooldown.thistle_tea.charges>=2&debuff.shiv.remains>6|!buff.thistle_tea.up&fight_remains<=cooldown.thistle_tea.charges*6
+actions.cds+=/call_action_list,name=misc_cds
+actions.cds+=/call_action_list,name=vanish,if=!stealthed.all&master_assassin_remains=0
+actions.cds+=/cold_blood,use_off_gcd=1,if=(buff.fatebound_coin_tails.stack>0&buff.fatebound_coin_heads.stack>0)|debuff.shiv.up&(cooldown.deathmark.remains>50|!talent.inevitabile_end&effective_combo_points>=variable.effective_spend_cp)
+]]
+	self:items()
+	if Deathmark:Usable() and not Player.stealthed and Deathmark:Refreshable() and (
+		(Target.timeToDie >= 10 and SliceAndDice:Remains() > 5 and Rupture:Up() and (Envenom:Up() or Player.enemies > 1) and (not MasterAssassin.known or Garrote:Up()) and (not Kingsbane.known or Kingsbane:Ready(2))) or
+		(Target.boss and Target.timeToDie <= 20)
+	) then
+		UseCooldown(Deathmark)
 	end
-	if Vendetta:Usable() and (not Exsanguinate.known or Rupture:Up()) then
-		return UseCooldown(Vendetta)
+	local apl = self:shiv()
+	if apl then return apl end
+	if Kingsbane:Usable() and (
+		((Shiv:Up() or Shiv:Ready(6)) and (Player.enemies > 1 or Envenom:Up()) and (Deathmark:Ticking() > 0 or not Deathmark:Ready(50))) or
+		(Target.boss and Target.timeToDie <= 15)
+	) then
+		UseCooldown(Kingsbane)
 	end
-	if Vanish:Usable() and not Player.stealthed then
-		if Target.timeToDie <= 6 then
-			return UseCooldown(Vanish)
-		end
-		if Nightstalker.known then
-			if Player.combo_points.effective >= Player.combo_points.max_spend then
-				if not Exsanguinate.known and Vendetta:Up() then
-					return UseCooldown(Vanish)
-				elseif Exsanguinate.known and Exsanguinate:Ready(1) then
-					return UseCooldown(Vanish)
-				end
-			end
-		elseif Subterfuge.known then
-			if Garrote:Refreshable() and ((Player.enemies <= 3 and Player.combo_points.deficit >= 1 + Player.enemies) or (Player.enemies >= 4 and Player.combo_points.deficit >= 4)) then
-				return UseCooldown(Vanish)
-			end
-		elseif ShadowFocus.known and Player.energy_time_to_max_combined >= 2 and Player.combo_points.deficit >= 4 then
-			return UseCooldown(Vanish)
-		end
+	if ThistleTea:Usable() and ThistleTea:Down() and (
+		(Kingsbane:Ticking() > 0 and Kingsbane:HighestRemains() < 8) or
+		(ThistleTea:Charges() >= 2 and Shiv:Remains() > 6) or
+		(Target.boss and Target.timeToDie <= ThistleTea:ChargesFractional() * 6)
+	) then
+		UseCooldown(ThistleTea)
 	end
-	if ToxicBlade:Usable() and (Target.timeToDie <= 6 or Player.combo_points.deficit >= 1 and Rupture:Remains() > 8 and Vendetta:Cooldown() > 10) then
-		return UseCooldown(ToxicBlade)
+	if not Player.stealthed and MasterAssassin:Down() then
+		apl = self:vanish()
+		if apl then return apl end
+	end
+	if ColdBlood:Usable() and (
+		(Fatebound.known and FateboundCoinTails:Up() and FateboundCoinHeads:Up()) or
+		(Shiv:Up() and (not Deathmark:Ready(50) or (InevitableEnds.known and Player.combo_points.effective >= self.effective_spend_cp)))
+	) then
+		UseCooldown(ColdBlood)
 	end
 end
 
-APL[SPEC.ASSASSINATION].finish = function(self)
+APL[SPEC.ASSASSINATION].core_dot = function(self)
 --[[
-actions.finish=death_from_above,if=combo_points>=5
-actions.finish+=/envenom,if=talent.anticipation.enabled&combo_points>=5&((debuff.toxic_blade.up&buff.virulent_poisons.remains<2)|mantle_duration>=0.2|buff.virulent_poisons.remains<0.2|energy.deficit<=25+variable.energy_regen_combined)
-actions.finish+=/envenom,if=talent.anticipation.enabled&combo_points>=4&!buff.virulent_poisons.up
-actions.finish+=/envenom,if=!talent.anticipation.enabled&combo_points>=4+(talent.deeper_stratagem.enabled&!set_bonus.tier19_4pc)&(debuff.vendetta.up|debuff.toxic_blade.up|mantle_duration>=0.2|debuff.surge_of_toxins.remains<0.2|energy.deficit<=25+variable.energy_regen_combined)
-actions.finish+=/envenom,if=talent.elaborate_planning.enabled&combo_points>=3+!talent.exsanguinate.enabled&buff.elaborate_planning.remains<0.2
+actions.core_dot=garrote,if=combo_points.deficit>=1&(pmultiplier<=1)&refreshable&target.time_to_die-remains>12
+actions.core_dot+=/rupture,if=combo_points>=variable.effective_spend_cp&(pmultiplier<=1)&refreshable&target.time_to_die-remains>(4+(talent.dashing_scoundrel*5)+(variable.regen_saturated*6))&(!buff.darkest_night.up|talent.caustic_spatter&!debuff.caustic_spatter.up)
 ]]
+	if Garrote:Usable() and Player.combo_points.deficit >= 1 and Garrote:Multiplier() <= 1 and Garrote:Refreshable() and (Target.timeToDie - Garrote:Remains()) > 12 then
+		return Garrote
+	end
+	if Rupture:Usable() and Player.combo_points.current >= self.effective_spend_cp and Rupture:Refreshable() and (Target.timeToDie - Rupture:Remains()) > (4 + (DashingScoundrel.known and 5 or 0) + (self.regen_satured and 6 or 0)) and (DarkestNight:Down() or (CausticSpatter.known and CausticSpatter:Down())) then
+		return Rupture
+	end
 end
 
-APL[SPEC.ASSASSINATION].maintain = function(self)
+APL[SPEC.ASSASSINATION].direct = function(self)
 --[[
-actions.maintain=rupture,if=talent.exsanguinate.enabled&((combo_points>=cp_max_spend&cooldown.exsanguinate.remains<1)|(!ticking&(time>10|combo_points>=2+artifact.urge_to_kill.enabled)))
-actions.maintain+=/rupture,cycle_targets=1,if=combo_points>=4&refreshable&(pmultiplier<=1|remains<=tick_time)&(!exsanguinated|remains<=tick_time*2)&target.time_to_die-remains>6
-actions.maintain+=/pool_resource,for_next=1
-actions.maintain+=/garrote,cycle_targets=1,if=(!talent.subterfuge.enabled|!(cooldown.vanish.up&cooldown.vendetta.remains<=4))&combo_points.deficit>=1&refreshable&(pmultiplier<=1|remains<=tick_time)&(!exsanguinated|remains<=tick_time*2)&target.time_to_die-remains>4
-actions.maintain+=/garrote,if=set_bonus.tier20_4pc&talent.exsanguinate.enabled&prev_gcd.1.rupture&cooldown.exsanguinate.remains<1&(!cooldown.vanish.up|time>12)
-actions.maintain+=/garrote,if=!set_bonus.tier20_4pc&talent.exsanguinate.enabled&cooldown.exsanguinate.remains<2+2*(cooldown.vanish.remains<2)&time>12
-actions.maintain+=/rupture,if=!talent.exsanguinate.enabled&combo_points>=3&!ticking&mantle_duration=0&target.time_to_die>6
+actions.direct=envenom,if=!buff.darkest_night.up&combo_points>=variable.effective_spend_cp&(variable.not_pooling|debuff.amplifying_poison.stack>=20|!variable.single_target)&!buff.vanish.up
+actions.direct+=/envenom,if=buff.darkest_night.up&effective_combo_points>=cp_max_spend
+actions.direct+=/variable,name=use_filler,value=combo_points<=variable.effective_spend_cp&!variable.cd_soon|variable.not_pooling|!variable.single_target
+actions.direct+=/variable,name=use_caustic_filler,value=talent.caustic_spatter&dot.rupture.ticking&(!debuff.caustic_spatter.up|debuff.caustic_spatter.remains<=2)&combo_points.deficit>=1&!variable.single_target
+actions.direct+=/mutilate,if=variable.use_caustic_filler
+actions.direct+=/ambush,if=variable.use_caustic_filler
+actions.direct+=/fan_of_knives,if=variable.use_filler&!priority_rotation&(spell_targets.fan_of_knives>=3-(talent.momentum_of_despair&talent.thrown_precision)|buff.clear_the_witnesses.up&!talent.vicious_venoms)
+actions.direct+=/fan_of_knives,target_if=!dot.deadly_poison_dot.ticking&(!priority_rotation|dot.garrote.ticking|dot.rupture.ticking),if=variable.use_filler&spell_targets.fan_of_knives>=3-(talent.momentum_of_despair&talent.thrown_precision)
+actions.direct+=/ambush,if=variable.use_filler&(buff.blindside.up|stealthed.rogue)&(!dot.kingsbane.ticking|debuff.deathmark.down|buff.blindside.up)
+actions.direct+=/mutilate,target_if=!dot.deadly_poison_dot.ticking&!debuff.amplifying_poison.up,if=variable.use_filler&spell_targets.fan_of_knives=2
+actions.direct+=/mutilate,if=variable.use_filler
 ]]
+	if Envenom:Usable() and (
+		(DarkestNight:Down() and Player.combo_points.current >= self.effective_spend_cp and (self.not_pooling or AmplifyingPoison.dot:Stack() >= AmplifyingPoison.dot:MaxStack() or not self.single_target) and Vanish:Down()) or
+		(DarkestNight:Up() and Player.combo_points.effective >= Player.combo_points.max_spend)
+	) then
+		return Envenom
+	end
+	if CausticSpatter.known and Player.combo_points.deficit >= 1 and not self.single_target and Rupture:Up() and CausticSpatter:Remains() <= 2 then
+		if Mutilate:Usable() then
+			return Mutilate
+		end
+		if Ambush:Usable() then
+			return Ambush
+		end
+	end
+	if (
+		(Player.combo_points.current <= self.effective_spend_cp and not self.cd_soon) or
+		self.not_pooling or
+		not self.single_target
+	) then
+		if not Opt.priority_rotation and FanOfKnives:Usable() and (
+			(Player.enemies >= (3 - (MomentumOfDespair.known and ThrownPrecision.known and 1 or 0))) or
+			(ClearTheWitnesses.known and not ViciousVenoms.known and ClearTheWitnesses:Up())
+		) then
+			return FanOfKnives
+		end
+		if Ambush:Usable() and (
+			(Blindside.known and Blindside:Up()) or
+			(Stealth:Up() and (Kingsbane:Ticking() == 0 or Deathmark:Down()))
+		) then
+			return Ambush
+		end
+		if Mutilate:Usable() then
+			return Mutilate
+		end
+	end
+end
+
+APL[SPEC.ASSASSINATION].items = function(self)
+--[[
+actions.items=variable,name=base_trinket_condition,value=dot.rupture.ticking&cooldown.deathmark.remains<2|dot.deathmark.ticking|fight_remains<=22
+actions.items+=/use_item,name=ashes_of_the_embersoul,use_off_gcd=1,if=(dot.kingsbane.ticking&dot.kingsbane.remains<=11)|fight_remains<=22
+actions.items+=/use_item,name=algethar_puzzle_box,use_off_gcd=1,if=variable.base_trinket_condition
+actions.items+=/use_item,name=treacherous_transmitter,use_off_gcd=1,if=variable.base_trinket_condition
+actions.items+=/use_item,name=mad_queens_mandate,if=cooldown.deathmark.remains>=30&!dot.deathmark.ticking|fight_remains<=3
+actions.items+=/do_treacherous_transmitter_task,use_off_gcd=1,if=dot.deathmark.ticking&variable.single_target|buff.realigning_nexus_convergence_divergence.up&buff.realigning_nexus_convergence_divergence.remains<=2|buff.cryptic_instructions.up&buff.cryptic_instructions.remains<=2|buff.errant_manaforge_emission.up&buff.errant_manaforge_emission.remains<=2|fight_remains<=15
+actions.items+=/use_item,name=imperfect_ascendancy_serum,use_off_gcd=1,if=variable.base_trinket_condition
+actions.items+=/use_items,slots=trinket1,if=(variable.trinket_sync_slot=1&(debuff.deathmark.up|fight_remains<=20)|(variable.trinket_sync_slot=2&(!trinket.2.cooldown.ready&dot.kingsbane.ticking|!debuff.deathmark.up&cooldown.deathmark.remains>20&dot.kingsbane.ticking))|!variable.trinket_sync_slot)
+actions.items+=/use_items,slots=trinket2,if=(variable.trinket_sync_slot=2&(debuff.deathmark.up|fight_remains<=20)|(variable.trinket_sync_slot=1&(!trinket.1.cooldown.ready&dot.kingsbane.ticking|!debuff.deathmark.up&cooldown.deathmark.remains>20&dot.kingsbane.ticking))|!variable.trinket_sync_slot)
+]]
+	self.base_trinket_condition = (
+		Deathmark:Ticking() > 0 or
+		(Rupture:Ticking() > 0 and Deathmark:Ready(2)) or
+		(Target.boss and Target.timeToDie <= 22)
+	)
+	if Trinket1:Usable() and self.base_trinket_condition then
+		return UseCooldown(Trinket1)
+	end
+	if Trinket2:Usable() and self.base_trinket_condition then
+		return UseCooldown(Trinket2)
+	end
+end
+
+APL[SPEC.ASSASSINATION].shiv = function(self)
+--[[
+actions.shiv=variable,name=shiv_condition,value=!debuff.shiv.up&dot.garrote.ticking&dot.rupture.ticking
+actions.shiv+=/variable,name=shiv_kingsbane_condition,value=talent.kingsbane&buff.envenom.up&variable.shiv_condition
+actions.shiv+=/shiv,if=talent.arterial_precision&variable.shiv_condition&spell_targets.fan_of_knives>=4&dot.crimson_tempest.ticking
+actions.shiv+=/shiv,if=!talent.lightweight_shiv.enabled&variable.shiv_kingsbane_condition&(dot.kingsbane.ticking&dot.kingsbane.remains<8|!dot.kingsbane.ticking&cooldown.kingsbane.remains>=20)&(!talent.crimson_tempest.enabled|variable.single_target|dot.crimson_tempest.ticking)
+actions.shiv+=/shiv,if=talent.lightweight_shiv.enabled&variable.shiv_kingsbane_condition&(dot.kingsbane.ticking|cooldown.kingsbane.remains<=1)
+actions.shiv+=/shiv,if=talent.arterial_precision&variable.shiv_condition&debuff.deathmark.up
+actions.shiv+=/shiv,if=!talent.kingsbane&!talent.arterial_precision&variable.shiv_condition&(!talent.crimson_tempest.enabled|variable.single_target|dot.crimson_tempest.ticking)
+actions.shiv+=/shiv,if=fight_remains<=cooldown.shiv.charges*8
+]]
+	if Shiv:Usable() and Shiv:Down() and Garrote:Ticking() > 0 and Rupture:Ticking() > 0 and Target.timeToDie > 3 and (
+		(ArterialPrecision.known and (
+			(Player.enemies >= 4 and CrimsonTempest:Ticking() > 0) or
+			(Deathmark.known and Deathmark:Up())
+		)) or
+		(Kingsbane.known and Envenom:Up() and (
+			(not LightweightShiv.known and ((Kingsbane:Ticking() > 0 and Kingsbane:HighestRemains() < 8) or (Kingsbane:Ticking() == 0 and not Kingsbane:Ready(20))) and (not CrimsonTempest.known or self.single_target or CrimsonTempest:Ticking() > 0)) or
+			(LightweightShiv.known and (Kingsbane:Ticking() > 0 or Kingsbane:Ready(1)))
+		)) or
+		(not Kingsbane.known and not ArterialPrecision.known and (not CrimsonTempest.known or self.single_target or CrimsonTempest:Ticking() > 0)) or
+		(Target.boss and Target.timeToDie <= (Shiv:ChargesFractional() * 8))
+	) then
+		return Shiv
+	end
 end
 
 APL[SPEC.ASSASSINATION].stealthed = function(self)
 --[[
-actions.stealthed=mutilate,if=talent.shadow_focus.enabled&dot.garrote.ticking
-actions.stealthed+=/garrote,cycle_targets=1,if=talent.subterfuge.enabled&combo_points.deficit>=1&set_bonus.tier20_4pc&((dot.garrote.remains<=13&!debuff.toxic_blade.up)|pmultiplier<=1)&!exsanguinated
-actions.stealthed+=/garrote,cycle_targets=1,if=talent.subterfuge.enabled&combo_points.deficit>=1&!set_bonus.tier20_4pc&refreshable&(!exsanguinated|remains<=tick_time*2)&target.time_to_die-remains>2
-actions.stealthed+=/garrote,cycle_targets=1,if=talent.subterfuge.enabled&combo_points.deficit>=1&!set_bonus.tier20_4pc&remains<=10&pmultiplier<=1&!exsanguinated&target.time_to_die-remains>2
-actions.stealthed+=/rupture,cycle_targets=1,if=combo_points>=4&refreshable&(pmultiplier<=1|remains<=tick_time)&(!exsanguinated|remains<=tick_time*2)&target.time_to_die-remains>6
-actions.stealthed+=/rupture,if=talent.exsanguinate.enabled&talent.nightstalker.enabled&target.time_to_die-remains>6
-actions.stealthed+=/envenom,if=combo_points>=cp_max_spend
-actions.stealthed+=/garrote,if=!talent.subterfuge.enabled&target.time_to_die-remains>4
-actions.stealthed+=/mutilate
+actions.stealthed=pool_resource,for_next=1
+actions.stealthed+=/ambush,if=!debuff.deathstalkers_mark.up&talent.deathstalkers_mark&combo_points<variable.effective_spend_cp&(dot.rupture.ticking|variable.single_target|!talent.subterfuge)
+actions.stealthed+=/shiv,if=talent.kingsbane&dot.kingsbane.ticking&dot.kingsbane.remains<8&(!debuff.shiv.up&debuff.shiv.remains<1)&buff.envenom.up
+actions.stealthed+=/envenom,if=effective_combo_points>=variable.effective_spend_cp&(dot.kingsbane.ticking&buff.envenom.remains<=3|buff.master_assassin_aura.up&variable.single_target)&(buff.cold_blood.up|buff.darkest_night.down&debuff.deathstalkers_mark.up|buff.darkest_night.up&effective_combo_points>=cp_max_spend)
+actions.stealthed+=/rupture,target_if=effective_combo_points>=variable.effective_spend_cp&buff.indiscriminate_carnage.up&refreshable&(!variable.regen_saturated|!variable.scent_saturation|!dot.rupture.ticking)&target.time_to_die>15
+actions.stealthed+=/garrote,target_if=min:remains,if=stealthed.improved_garrote&(remains<12|pmultiplier<=1|(buff.indiscriminate_carnage.up&active_dot.garrote<spell_targets.fan_of_knives))&!variable.single_target&target.time_to_die-remains>2&combo_points.deficit>2-buff.darkest_night.up*2
+actions.stealthed+=/garrote,if=stealthed.improved_garrote&(pmultiplier<=1|refreshable)&combo_points.deficit>=1+2*talent.shrouded_suffocation
 ]]
-	if ShadowFocus.known and Mutilate:Usable() and Garrote:Ticking() > 0 then
-		return Mutilate
+	if DeathstalkersMark.known and Ambush:Usable(0, true) and DeathstalkersMark:Down() and Player.combo_points.current < self.effective_spend_cp and (Rupture:Ticking() > 0 or self.single_target or not Subterfuge.known) then
+		return Pool(Ambush)
 	end
-	if Subterfuge.known and Garrote:Usable() and Player.combo_points.deficit >= 1 and Garrote:Refreshable() and Garrote:Remains() <= Garrote:TickTime() * 2 and Target.timeToDie - Garrote:Remains() > 2 then
-		return Garrote
+	if Kingsbane.known and Shiv:Usable() and Kingsbane:Ticking() > 0 and Kingsbane:HighestRemains() < 8 and Shiv:Remains() < 1 and Envenom:Up() then
+		return Shiv
 	end
-	if Rupture:Usable() then
-		if Rupture:Refreshable() and Player.combo_points.effective >= 4 and Rupture:Remains() <= Rupture:TickTime() and Target.timeToDie - Rupture:Remains() > 6 then
-			return Rupture
-		end
-		if Exsanguinate.known and Nightstalker.known and Target.timeToDie - Rupture:Remains() > 6 then
-			return Rupture
-		end
-	end
-	if Envenom:Usable() and Player.combo_points.effective >= Player.combo_points.max_spend then
+	if Envenom:Usable() and Player.combo_points.effective >= self.effective_spend_cp and (
+		(Kingsbane:Ticking() > 0 and Envenom:Remains() <= 3) or
+		(MasterAssassin:Up(true) and self.single_target)
+	) and (
+		(ColdBlood.known and ColdBlood:Up()) or
+		(DeathstalkersMark.known and (
+			(DarkestNight:Down() and DeathstalkersMark:Up()) or
+			(DarkestNight:Up() and Player.combo_points.effective >= Player.combo_points.max_spend)
+		))
+	) then
 		return Envenom
 	end
-	if not Subterfuge.known and Garrote:Usable() and Target.timeToDie - Garrote:Remains() > 4 then
+	if Rupture:Usable() and Player.combo_points.effective >= self.effective_spend_cp and Rupture:Refreshable() and IndiscriminateCarnage:Up() and (not self.regen_saturated or not self.scent_saturation or Rupture:Ticking() == 0) and Target.timeToDie > 15 then
+		return Rupture
+	end
+	if Garrote:Usable() and ImprovedGarrote:Up() and (
+		((Garrote:Remains() < 12 or Garrote:Multiplier() <= 1 or (IndiscriminateCarnage:Up() and Garrote:Ticking() < Player.enemies)) and not self.single_target and (Target.timeToDie - Garrote:Remains()) > 2 and Player.combo_points.deficit > (2 - (DarkestNight:Up() and 2 or 0))) or
+		((Garrote:Multiplier() <= 1 or Garrote:Refreshable()) and Player.combo_points.deficit >= (1 + (ShroudedSuffocation.known and 2 or 0)))
+	) then
 		return Garrote
 	end
-	if Mutilate:Usable() then
-		return Mutilate
+end
+
+APL[SPEC.ASSASSINATION].vanish = function(self)
+--[[
+actions.vanish=pool_resource,for_next=1,extra_amount=45
+actions.vanish+=/vanish,if=!buff.fatebound_lucky_coin.up&effective_combo_points>=variable.effective_spend_cp&(buff.fatebound_coin_tails.stack>=5|buff.fatebound_coin_heads.stack>=5)
+actions.vanish+=/vanish,if=!talent.master_assassin&!talent.indiscriminate_carnage&talent.improved_garrote&cooldown.garrote.up&(dot.garrote.pmultiplier<=1|dot.garrote.refreshable)&(debuff.deathmark.up|cooldown.deathmark.remains<4)&combo_points.deficit>=(spell_targets.fan_of_knives>?4)
+actions.vanish+=/pool_resource,for_next=1,extra_amount=45
+actions.vanish+=/vanish,if=talent.indiscriminate_carnage&talent.improved_garrote&cooldown.garrote.up&(dot.garrote.pmultiplier<=1|dot.garrote.refreshable)&spell_targets.fan_of_knives>2&(target.time_to_die-remains>15|raid_event.adds.in>20)
+actions.vanish+=/vanish,if=talent.master_assassin&debuff.deathmark.up&dot.kingsbane.remains<=6+3*talent.subterfuge.rank
+actions.vanish+=/vanish,if=talent.improved_garrote&cooldown.garrote.up&(dot.garrote.pmultiplier<=1|dot.garrote.refreshable)&(debuff.deathmark.up|cooldown.deathmark.remains<4)&raid_event.adds.in>30
+]]
+	if not Vanish:Usable() then
+		return
+	end
+	if LuckyCoin.known and LuckyCoin:Down() and Player.combo_points.effective >= self.effective_spend_cp and (FateboundCoin.Tails:Stack() >= 5 or FateboundCoin.Heads:Stack() >= 5) then
+		return UseCooldown(Pool(Vanish, 45))
+	end
+	if not MasterAssassin.known and not IndiscriminateCarnage.known and ImprovedGarrote.known and Garrote:Ready() and (Garrote:Multiplier() <= 1 or Garrote:Refreshable()) and (Deathmark:Up() or Deathmark:Ready(4)) and Player.combo_points.deficit >= min(4, Player.enemies) then
+		return UseCooldown(Vanish)
+	end
+	if IndiscriminateCarnage.known and ImprovedGarrote.known and Garrote:Ready() and (Garrote:Multiplier() <= 1 or Garrote:Refreshable()) and Player.enemies > 2 then
+		return UseCooldown(Pool(Vanish, 45))
+	end
+	if Deathmark.known and (
+		(MasterAssassin.known and Deathmark:Up() and Kingsbane:HighestRemains() <= (6 + Subterfuge:Duration())) or
+		(ImprovedGarrote.known and Garrote:Ready() and (Garrote:Multiplier() <= 1 or Garrote:Refreshable()) and (Deathmark:Up() or Deathmark:Ready(4)))
+	) then
+		return UseCooldown(Vanish)
 	end
 end
 
@@ -3437,12 +3801,21 @@ function UI:UpdateDisplay()
 	if Player.pool_energy then
 		local deficit = Player.pool_energy - UnitPower('player', 3)
 		if deficit > 0 then
-			text_center = format('POOL %d', deficit)
+			text_center = format('POOL\n%d', deficit)
 			dim = Opt.dimmer
 		end
 	end
 	if Player.danse_stacks > 0 then
 		text_tr = Player.danse_stacks
+	end
+	if assassinPanel.text.multiplier_diff then
+		if assassinPanel.text.multiplier_diff >= 0 then
+			text_tr = format('+%d%%', assassinPanel.text.multiplier_diff * 100)
+			assassinPanel.text.tr:SetTextColor(0, 1, 0)
+		elseif assassinPanel.text.multiplier_diff < 0 then
+			text_tr = format('%d%%', assassinPanel.text.multiplier_diff * 100)
+			assassinPanel.text.tr:SetTextColor(1, 0, 0)
+		end
 	end
 	if Player.stealth_remains > 0 then
 		text_tl = format('%.1fs', Player.stealth_remains)
@@ -3485,6 +3858,11 @@ function UI:UpdateCombat()
 
 	if Player.main then
 		assassinPanel.icon:SetTexture(Player.main.icon)
+		if Opt.multipliers and Player.main.NextMultiplier then
+			assassinPanel.text.multiplier_diff = Player.main:NextMultiplier() - Player.main:Multiplier()
+		else
+			assassinPanel.text.multiplier_diff = nil
+		end
 		Player.main_freecast = Player.main:Free()
 	end
 	if Player.cd then
@@ -3746,6 +4124,13 @@ function Events:UNIT_SPELLCAST_SENT(unitId, destName, castGUID, spellId)
 	local ability = Abilities.bySpellId[spellId]
 	if not ability then
 		return
+	end
+	if ability.next_combo_points then
+		ability.next_combo_points = UnitPower('player', 4)
+		ability.next_applied_by = ability
+	end
+	if ability.NextMultiplier then
+		ability.next_multiplier = ability:NextMultiplier()
 	end
 	if RollTheBones.known and (ability == RollTheBones or (CountTheOdds.known and CountTheOdds.triggers[ability])) then
 		RollTheBones.next_trigger = ability
@@ -4222,6 +4607,12 @@ SlashCmdList[ADDON] = function(msg, editbox)
 		end
 		return Status('Health percentage threshold to recommend self healing spells', Opt.heal .. '%')
 	end
+	if startsWith(msg[1], 'mu') then
+		if msg[2] then
+			Opt.multipliers = msg[2] == 'on'
+		end
+		return Status('Show DoT multiplier differences (top right)', Opt.multipliers)
+	end
 	if startsWith(msg[1], 'poi') then
 		if msg[2] then
 			Opt.poisons = msg[2] == 'on'
@@ -4313,6 +4704,7 @@ SlashCmdList[ADDON] = function(msg, editbox)
 		'pot |cFF00C000on|r/|cFFC00000off|r - show flasks and battle potions in cooldown UI',
 		'trinket |cFF00C000on|r/|cFFC00000off|r - show on-use trinkets in cooldown UI',
 		'heal |cFFFFD000[percent]|r - health percentage threshold to recommend self healing spells (default is 60%, 0 to disable)',
+		'multipliers |cFF00C000on|r/|cFFC00000off|r - show DoT multiplier differences (top right)',
 		'poisons |cFF00C000on|r/|cFFC00000off|r - show a reminder for poisons (5 minutes outside combat)',
 		'priority |cFF00C000on|r/|cFFC00000off|r - use "priority rotation" mode (off by default)',
 		'vanish |cFF00C000on|r/|cFFC00000off|r - use Vanish and Shadowmeld while solo (off by default)',
