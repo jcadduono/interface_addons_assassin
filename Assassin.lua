@@ -1139,6 +1139,7 @@ local ThistleTea = Ability:Add(381623, true, true)
 ThistleTea.buff_duration = 6
 ThistleTea.cooldown_duration = 60
 ThistleTea.requires_charge = true
+ThistleTea.off_gcd = true
 local TightSpender = Ability:Add(381621, true, true)
 local Vigor = Ability:Add(14983, false, true)
 local VirulentPoisons = Ability:Add(381543, true, true)
