@@ -1769,7 +1769,6 @@ function Player:UpdateKnown()
 	self:UpdatePoisons()
 
 	Abilities:Update()
-	assassinPanel.text.tl:SetTextColor(1, 1, 1)
 
 	if APL[self.spec].precombat_variables then
 		APL[self.spec]:precombat_variables()
@@ -3925,23 +3924,6 @@ function UI:UpdateDisplay()
 			dim = Opt.dimmer
 		end
 	end
-	if assassinPanel.text.multiplier_diff and not text_center then
-		if assassinPanel.text.multiplier_diff >= 0 then
-			text_center = format('+%d%%', assassinPanel.text.multiplier_diff * 100)
-			assassinPanel.text.center:SetTextColor(0, 1, 0)
-		elseif assassinPanel.text.multiplier_diff < 0 then
-			text_center = format('%d%%', assassinPanel.text.multiplier_diff * 100)
-			assassinPanel.text.center:SetTextColor(1, 0, 0)
-		end
-	else
-		assassinPanel.text.center:SetTextColor(1, 1, 1)
-	end
-	if Player.danse_stacks > 0 then
-		text_tl = Player.danse_stacks
-	end
-	if Player.stealth_remains > 0 then
-		text_bl = format('%.1fs', Player.stealth_remains)
-	end
 	if channel.ability and not channel.ability.ignore_channel and channel.tick_count > 0 then
 		dim = Opt.dimmer
 		if channel.tick_count > 1 then
@@ -3958,6 +3940,21 @@ function UI:UpdateDisplay()
 				dim = false
 			end
 		end
+	end
+	if assassinPanel.text.multiplier_diff and not text_center then
+		if assassinPanel.text.multiplier_diff >= 0 then
+			text_center = format('|cFF00FF00+%d%%', assassinPanel.text.multiplier_diff * 100)
+		elseif assassinPanel.text.multiplier_diff < 0 then
+			text_center = format('|cFFFF0000%d%%', assassinPanel.text.multiplier_diff * 100)
+		end
+	else
+		assassinPanel.text.center:SetTextColor(1, 1, 1)
+	end
+	if Player.danse_stacks > 0 then
+		text_tl = Player.danse_stacks
+	end
+	if Player.stealth_remains > 0 then
+		text_bl = format('%.1fs', Player.stealth_remains)
 	end
 	if border ~= assassinPanel.border.overlay then
 		assassinPanel.border.overlay = border
