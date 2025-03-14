@@ -1406,6 +1406,7 @@ local PerforatedVeins = Ability:Add(382518, true, true, 394254)
 PerforatedVeins.max_stack = 4
 local Premeditation = Ability:Add(343160, true, true, 343173)
 Premeditation.max_stack = 1
+local ReplicatingShadows = Ability:Add(382506, false, true)
 local SecretStratagem = Ability:Add(394320, true, true)
 local SecretTechnique = Ability:Add(280719, true, true)
 SecretTechnique.cooldown_duration = 60
@@ -1445,6 +1446,8 @@ DeathstalkersMark.max_stack = 3
 local FollowTheBlood = Ability:Add(457068, true, true)
 local MomentumOfDespair = Ability:Add(457067, true, true, 457115)
 MomentumOfDespair.buff_duration = 12
+local LingeringDarkness = Ability:Add(457056, true, true, 457273)
+LingeringDarkness.buff_duration = 30
 ---- Fatebound
 local HandOfFate = Ability:Add(452536, true, true)
 local LuckyCoin = Ability:Add(452562, true, true)
