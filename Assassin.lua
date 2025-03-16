@@ -139,9 +139,9 @@ local function InitOpts()
 		heal = 60,
 		multipliers = true,
 		poisons = true,
-		last_poison = {
-			lethal = false,
-			nonlethal = false,
+		poison_priority = {
+			lethal = {},
+			nonlethal = {},
 		},
 		priority_rotation = false,
 		vanish_solo = false,
@@ -303,7 +303,10 @@ local Player = {
 		[203729] = true, -- Ominous Chromatic Essence
 	},
 	main_freecast = false,
-	poison = {},
+	poison = {
+		lethal = {},
+		nonlethal = {},
+	},
 	stealthed = false,
 	stealthed_nomeld = false,
 	stealth_time = 0,
@@ -1152,23 +1155,27 @@ local Weaponmaster = Ability:Add({193537, 200733}, false, true)
 ------ Procs
 
 ------ Poisons
-local Poison =  {}
+local Poison = {}
 Poison.Amplifying = Ability:Add(381664, true, true)
 Poison.Amplifying.buff_duration = 3600
+Poison.Amplifying.lethal = true
 Poison.Amplifying.DoT = Ability:Add(383414, false, true)
 Poison.Amplifying.DoT.buff_duration = 12
 Poison.Amplifying.DoT.max_stack = 20
 Poison.Amplifying.DoT:Track()
 Poison.Atrophic = Ability:Add(381637, true, true)
 Poison.Atrophic.buff_duration = 3600
+Poison.Atrophic.nonlethal = true
 Poison.Atrophic.DoT = Ability:Add(392388)
 Poison.Atrophic.DoT.buff_duration = 10
 Poison.Crippling = Ability:Add(3408, true, true)
 Poison.Crippling.buff_duration = 3600
+Poison.Crippling.nonlethal = true
 Poison.Crippling.DoT = Ability:Add(3409)
 Poison.Crippling.DoT.buff_duration = 12
 Poison.Deadly = Ability:Add(2823, true, true)
 Poison.Deadly.buff_duration = 3600
+Poison.Deadly.lethal = true
 Poison.Deadly.DoT = Ability:Add(2818, false, true)
 Poison.Deadly.DoT.buff_duration = 12
 Poison.Deadly.DoT.tick_interval = 2
@@ -1176,12 +1183,15 @@ Poison.Deadly.DoT.hasted_ticks = true
 Poison.Deadly.DoT:Track()
 Poison.Instant = Ability:Add(315584, true, true)
 Poison.Instant.buff_duration = 3600
+Poison.Instant.lethal = true
 Poison.Numbing = Ability:Add(5761, true, true)
 Poison.Numbing.buff_duration = 3600
+Poison.Numbing.nonlethal = true
 Poison.Numbing.DoT = Ability:Add(5760)
 Poison.Numbing.DoT.buff_duration = 10
 Poison.Wound = Ability:Add(8679, true, true)
 Poison.Wound.buff_duration = 3600
+Poison.Wound.lethal = true
 Poison.Wound.DoT = Ability:Add(8680, false, true)
 Poison.Wound.DoT.buff_duration = 12
 Poison.Wound.DoT:Track()
@@ -1720,31 +1730,37 @@ function Player:UpdateTime(timeStamp)
 end
 
 function Player:UpdatePoisons()
-	if not Opt.last_poison.lethal then
-		if Poison.Deadly.known then
-			Opt.last_poison.lethal = Poison.Deadly.spellId
-		elseif Poison.Amplifying.known then
-			Opt.last_poison.lethal = Poison.Amplifying.spellId
-		elseif Poison.Instant.known then
-			Opt.last_poison.lethal = Poison.Instant.spellId
-		elseif Poison.Wound.known then
-			Opt.last_poison.lethal = Poison.Wound.spellId
+	if #Opt.poison_priority.lethal == 0 then
+		Poison.Wound:Default()
+		Poison.Instant:Default()
+		Poison.Amplifying:Default()
+		Poison.Deadly:Default()
+	end
+	if #Opt.poison_priority.nonlethal == 0 then
+		Poison.Crippling:Default()
+		Poison.Numbing:Default()
+		Poison.Atrophic:Default()
+	end
+	local ability
+	table.wipe(self.poison.lethal)
+	for _, spellId in next, Opt.poison_priority.lethal do
+		ability = Abilities.bySpellId[spellId]
+		if ability then
+			self.poison.lethal[#self.poison.lethal + 1] = ability
 		end
 	end
-	if not Opt.last_poison.nonlethal then
-		if Poison.Atrophic.known then
-			Opt.last_poison.nonlethal = Poison.Atrophic.spellId
-		elseif Poison.Crippling.known then
-			Opt.last_poison.nonlethal = Poison.Crippling.spellId
-		elseif Poison.Numbing.known then
-			Opt.last_poison.nonlethal = Poison.Numbing.spellId
+	table.wipe(self.poison.nonlethal)
+	for _, spellId in next, Opt.poison_priority.nonlethal do
+		ability = Abilities.bySpellId[spellId]
+		if ability then
+			self.poison.nonlethal[#self.poison.nonlethal + 1] = ability
 		end
 	end
-	if Opt.last_poison.lethal then
-		self.poison.lethal = Abilities.bySpellId[Opt.last_poison.lethal]
+	if Poison.Amplifying.known then
+		Poison.Amplifying:Default()
 	end
-	if Opt.last_poison.nonlethal then
-		self.poison.nonlethal = Abilities.bySpellId[Opt.last_poison.nonlethal]
+	if Poison.Deadly.known then
+		Poison.Deadly:Default()
 	end
 end
 
@@ -1779,10 +1795,11 @@ function Player:UpdateKnown()
 		end
 	end
 
-	Poison.Deadly.DoT.known = Poison.Deadly.known
-	Poison.Wound.DoT.known = Poison.Wound.known
-	Poison.Amplifying.DoT.known = Poison.Amplifying.known
-
+	for _, ability in next, Poison do
+		if ability.known and ability.DoT then
+			ability.DoT.known = true
+		end
+	end
 	if RollTheBones.known then
 		for buff in next, RollTheBones.Buffs do
 			buff.known = true
@@ -1805,9 +1822,9 @@ function Player:UpdateKnown()
 	CausticSpatter.damage.known = CausticSpatter.known
 
 	self.combo_points.max_spend = 5 + (DeeperStratagem.known and 1 or 0) + (DeviousStratagem.known and 1 or 0) + (SecretStratagem.known and 1 or 0) + (SanguineStratagem.known and 1 or 0)
-	self:UpdatePoisons()
 
 	Abilities:Update()
+	self:UpdatePoisons()
 
 	if APL[self.spec].precombat_variables then
 		APL[self.spec]:precombat_variables()
@@ -2315,22 +2332,38 @@ function ShadowTechniques:TimeTo(autoCount)
 	return max(0, (autoCount - self.auto_count) * Player.swing.mh.speed - Player.swing.mh.remains - Player.execute_remains)
 end
 
+function Poison.Instant:Default()
+	local prio = (
+		(self.lethal and Opt.poison_priority.lethal) or
+		(self.nonlethal and Opt.poison_priority.nonlethal)
+	)
+	for i, spellId in next, prio do
+		if spellId == self.spellId then
+			table.remove(prio, i)
+		end
+	end
+	table.insert(prio, 1, self.spellId)
+	local prio = (
+		(self.lethal and Player.poison.lethal) or
+		(self.nonlethal and Player.poison.nonlethal)
+	)
+	for i, ability in next, prio do
+		if ability == self then
+			table.remove(prio, i)
+		end
+	end
+	table.insert(prio, 1, self)
+end
+
 function Poison.Instant:CastSuccess(...)
 	Ability.CastSuccess(self, ...)
-	Opt.last_poison.lethal = self.spellId
-	Player.poison.lethal = self
+	self:Default()
 end
-Poison.Wound.CastSuccess = Poison.Instant.CastSuccess
-Poison.Deadly.CastSuccess = Poison.Instant.CastSuccess
-Poison.Amplifying.CastSuccess = Poison.Instant.CastSuccess
 
-function Poison.Atrophic:CastSuccess(...)
-	Ability.CastSuccess(self, ...)
-	Opt.last_poison.nonlethal = self.spellId
-	Player.poison.nonlethal = self
+for _, ability in next, Poison do
+	ability.Default = Poison.Instant.Default
+	ability.CastSuccess = Poison.Instant.CastSuccess
 end
-Poison.Crippling.CastSuccess = Poison.Atrophic.CastSuccess
-Poison.Numbing.CastSuccess = Poison.Atrophic.CastSuccess
 
 function Vanish:CastSuccess(...)
 	Ability.CastSuccess(self, ...)
@@ -2519,11 +2552,17 @@ actions.precombat+=/stealth
 actions.precombat+=/slice_and_dice,precombat_seconds=1
 ]]
 	if Opt.poisons then
-		if Player.poison.lethal and Player.poison.lethal:Usable() and Player.poison.lethal:Remains() < 300 then
-			return Player.poison.lethal
+		if Player.poison.lethal[1] and Player.poison.lethal[1]:Usable() and Player.poison.lethal[1]:Remains() < 300 then
+			return Player.poison.lethal[1]
 		end
-		if Player.poison.nonlethal and Player.poison.nonlethal:Usable() and Player.poison.nonlethal:Remains() < 300 then
-			return Player.poison.nonlethal
+		if DragonTemperedBlades.known and Player.poison.lethal[2] and Player.poison.lethal[2]:Usable() and Player.poison.lethal[2]:Remains() < 300 then
+			return Player.poison.lethal[2]
+		end
+		if Player.poison.nonlethal[1] and Player.poison.nonlethal[1]:Usable() and Player.poison.nonlethal[1]:Remains() < 300 then
+			return Player.poison.nonlethal[1]
+		end
+		if DragonTemperedBlades.known and Player.poison.nonlethal[2] and Player.poison.nonlethal[2]:Usable() and Player.poison.nonlethal[2]:Remains() < 300 then
+			return Player.poison.nonlethal[2]
 		end
 	end
 	if Stealth:Usable() then
@@ -2819,11 +2858,11 @@ actions.precombat+=/slice_and_dice,precombat_seconds=1
 actions.precombat+=/stealth
 ]]
 		if Opt.poisons then
-			if Player.poison.lethal and Player.poison.lethal:Usable() and Player.poison.lethal:Remains() < 300 then
-				return Player.poison.lethal
+			if Player.poison.lethal[1] and Player.poison.lethal[1]:Usable() and Player.poison.lethal[1]:Remains() < 300 then
+				return Player.poison.lethal[1]
 			end
-			if Player.poison.nonlethal and Player.poison.nonlethal:Usable() and Player.poison.nonlethal:Remains() < 300 then
-				return Player.poison.nonlethal
+			if Player.poison.nonlethal[1] and Player.poison.nonlethal[1]:Usable() and Player.poison.nonlethal[1]:Remains() < 300 then
+				return Player.poison.nonlethal[1]
 			end
 		end
 		if self.use_cds and UnderhandedUpperHand.known and BladeFlurry:Usable() and AdrenalineRush:Ready() and BladeFlurry:Down() then
@@ -3168,11 +3207,11 @@ actions.precombat+=/variable,name=trinket_sync_slot,value=2,if=trinket.2.has_sta
 actions.precombat+=/stealth
 ]]
 		if Opt.poisons then
-			if Player.poison.lethal and Player.poison.lethal:Usable() and Player.poison.lethal:Remains() < 300 then
-				return Player.poison.lethal
+			if Player.poison.lethal[1] and Player.poison.lethal[1]:Usable() and Player.poison.lethal[1]:Remains() < 300 then
+				return Player.poison.lethal[1]
 			end
-			if Player.poison.nonlethal and Player.poison.nonlethal:Usable() and Player.poison.nonlethal:Remains() < 300 then
-				return Player.poison.nonlethal
+			if Player.poison.nonlethal[1] and Player.poison.nonlethal[1]:Usable() and Player.poison.nonlethal[1]:Remains() < 300 then
+				return Player.poison.nonlethal[1]
 			end
 		end
 		if Stealth:Usable() then
