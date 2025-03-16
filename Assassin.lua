@@ -1068,6 +1068,7 @@ Eviscerate.next_combo_points = 0
 local Kick = Ability:Add(1766, false, true)
 Kick.cooldown_duration = 15
 Kick.triggers_gcd = false
+Kick.off_gcd = true
 local KidneyShot = Ability:Add(408, false, true)
 KidneyShot.buff_duration = 1
 KidneyShot.energy_cost = 25
@@ -1087,6 +1088,7 @@ ShadowDance.buff_duration = 6
 ShadowDance.cooldown_duration = 60
 ShadowDance.requires_charge = true
 ShadowDance.triggers_gcd = false
+ShadowDance.off_gcd = true
 local SinisterStrike = Ability:Add(193315, false, true)
 SinisterStrike.energy_cost = 45
 local SliceAndDice = Ability:Add(315496, true, true)
@@ -1098,12 +1100,16 @@ local Stealth = Ability:Add(1784, true, true, 115191)
 local Vanish = Ability:Add(1856, true, true, 11327)
 Vanish.cooldown_duration = 120
 Vanish.requires_charge = true
+Vanish.triggers_gcd = false
+Vanish.off_gcd = true
 ------ Talents
 local Alacrity = Ability:Add(193539, true, true)
 Alacrity.buff_duration = 20
 local ColdBlood = Ability:Add(382245, true, true)
 ColdBlood.buff_duration = 600
 ColdBlood.cooldown_duration = 45
+ColdBlood.triggers_gcd = false
+ColdBlood.off_gcd = true
 local DeeperStratagem = Ability:Add(193531, false, true)
 local FindWeakness = Ability:Add(91023, false, true, 316220)
 FindWeakness.buff_duration = 10
@@ -1137,6 +1143,7 @@ local ThistleTea = Ability:Add(381623, true, true)
 ThistleTea.buff_duration = 6
 ThistleTea.cooldown_duration = 60
 ThistleTea.requires_charge = true
+ThistleTea.triggers_gcd = false
 ThistleTea.off_gcd = true
 local TightSpender = Ability:Add(381621, true, true)
 local Vigor = Ability:Add(14983, false, true)
@@ -1265,6 +1272,8 @@ ViciousVenoms.talent_node = 90772
 local AdrenalineRush = Ability:Add(13750, true, true)
 AdrenalineRush.buff_duration = 20
 AdrenalineRush.cooldown_duration = 180
+AdrenalineRush.triggers_gcd = false
+AdrenalineRush.off_gcd = true
 local BetweenTheEyes = Ability:Add(315341, true, true)
 BetweenTheEyes.buff_duration = 3
 BetweenTheEyes.cooldown_duration = 45
@@ -1324,27 +1333,27 @@ SummarilyDispatched.buff_duration = 8
 local SwiftSlasher = Ability:Add(381988, true, true)
 local UnderhandedUpperHand = Ability:Add(424044, false, true)
 ------ Procs
-local Broadside = Ability:Add(193356, true, true) -- Roll the Bones
-Broadside.buff_duration = 30
-local BuriedTreasure = Ability:Add(199600, true, true) -- Roll the Bones
-BuriedTreasure.buff_duration = 30
-local GrandMelee = Ability:Add(193358, true, true) -- Roll the Bones
-GrandMelee.buff_duration = 30
-local Opportunity = Ability:Add(279876, true, true, 195627)
+Opportunity = Ability:Add(279876, true, true, 195627)
 Opportunity.buff_duration = 10
-local RuthlessPrecision = Ability:Add(193357, true, true) -- Roll the Bones
-RuthlessPrecision.buff_duration = 30
-local SkullAndCrossbones = Ability:Add(199603, true, true) -- Roll the Bones
-SkullAndCrossbones.buff_duration = 30
-local TrueBearing = Ability:Add(193359, true, true) -- Roll the Bones
-TrueBearing.buff_duration = 30
-RollTheBones.buffs = {
-	[Broadside] = true,
-	[BuriedTreasure] = true,
-	[GrandMelee] = true,
-	[RuthlessPrecision] = true,
-	[SkullAndCrossbones] = true,
-	[TrueBearing] = true,
+RollTheBones.Broadside = Ability:Add(193356, true, true)
+RollTheBones.Broadside.buff_duration = 30
+RollTheBones.BuriedTreasure = Ability:Add(199600, true, true)
+RollTheBones.BuriedTreasure.buff_duration = 30
+RollTheBones.GrandMelee = Ability:Add(193358, true, true)
+RollTheBones.GrandMelee.buff_duration = 30
+RollTheBones.RuthlessPrecision = Ability:Add(193357, true, true)
+RollTheBones.RuthlessPrecision.buff_duration = 30
+RollTheBones.SkullAndCrossbones = Ability:Add(199603, true, true)
+RollTheBones.SkullAndCrossbones.buff_duration = 30
+RollTheBones.TrueBearing = Ability:Add(193359, true, true)
+RollTheBones.TrueBearing.buff_duration = 30
+RollTheBones.Buffs = {
+	[RollTheBones.Broadside] = true,
+	[RollTheBones.BuriedTreasure] = true,
+	[RollTheBones.GrandMelee] = true,
+	[RollTheBones.RuthlessPrecision] = true,
+	[RollTheBones.SkullAndCrossbones] = true,
+	[RollTheBones.TrueBearing] = true,
 }
 ---- Subtlety
 local Backstab = Ability:Add(53, false, true)
@@ -1360,6 +1369,8 @@ ShurikenToss.energy_cost = 40
 local SymbolsOfDeath = Ability:Add(212283, true, true)
 SymbolsOfDeath.buff_duration = 10
 SymbolsOfDeath.cooldown_duration = 30
+SymbolsOfDeath.triggers_gcd = false
+SymbolsOfDeath.off_gcd = true
 ------ Talents
 local BlackPowder = Ability:Add(319175, false, true)
 BlackPowder.energy_cost = 35
@@ -1417,6 +1428,8 @@ SecretTechnique:AutoAoe(true)
 local ShadowBlades = Ability:Add(121471, true, true)
 ShadowBlades.buff_duration = 16
 ShadowBlades.cooldown_duration = 90
+ShadowBlades.triggers_gcd = false
+ShadowBlades.off_gcd = true
 local Shadowcraft = Ability:Add(426594, true, true)
 local ShadowFocus = Ability:Add(108209, false, true)
 local ShotInTheDark = Ability:Add(257505, true, true, 257506)
@@ -1769,15 +1782,12 @@ function Player:UpdateKnown()
 	Poison.Deadly.DoT.known = Poison.Deadly.known
 	Poison.Wound.DoT.known = Poison.Wound.known
 	Poison.Amplifying.DoT.known = Poison.Amplifying.known
---[[
-	Broadside.known = RollTheBones.known
-	BuriedTreasure.known = RollTheBones.known
-	GrandMelee.known = RollTheBones.known
-	RuthlessPrecision.known = RollTheBones.known
-	SkullAndCrossbones.known = RollTheBones.known
-	TrueBearing.known = RollTheBones.known
-	BladeFlurry.Cleave.known = BladeFlurry.known
-]]
+
+	if RollTheBones.known then
+		for buff in next, RollTheBones.Buffs do
+			buff.known = true
+		end
+	end
 	if Supercharger.known then
 		for i = 1, 7 do
 			Supercharger[i].known = true
@@ -2240,21 +2250,21 @@ for i = 1, 7 do
 	Supercharger[i].Remains = Supercharger[1].Remains
 end
 
-Broadside.Remains = function(self, rtbOnly)
+RollTheBones.Broadside.Remains = function(self, rtbOnly)
 	if rtbOnly and self.trigger ~= RollTheBones then
 		return 0
 	end
 	return Ability.Remains(self)
 end
-BuriedTreasure.Remains = Broadside.Remains
-GrandMelee.Remains = Broadside.Remains
-RuthlessPrecision.Remains = Broadside.Remains
-SkullAndCrossbones.Remains = Broadside.Remains
-TrueBearing.Remains = Broadside.Remains
+RollTheBones.BuriedTreasure.Remains = RollTheBones.Broadside.Remains
+RollTheBones.GrandMelee.Remains = RollTheBones.Broadside.Remains
+RollTheBones.RuthlessPrecision.Remains = RollTheBones.Broadside.Remains
+RollTheBones.SkullAndCrossbones.Remains = RollTheBones.Broadside.Remains
+RollTheBones.TrueBearing.Remains = RollTheBones.Broadside.Remains
 
 function RollTheBones:Stack(rtbOnly)
 	local count, buff = 0
-	for buff in next, self.buffs do
+	for buff in next, self.Buffs do
 		count = count + (buff:Up(rtbOnly) and 1 or 0)
 	end
 	return count
@@ -2262,7 +2272,7 @@ end
 
 function RollTheBones:Remains(rtbOnly)
 	local remains, max, buff = 0, 0
-	for buff in next, self.buffs do
+	for buff in next, self.Buffs do
 		remains = buff:Remains(rtbObly)
 		if remains > max then
 			max = remains
@@ -2857,7 +2867,7 @@ actions+=/lights_judgment
 actions+=/bag_of_tricks
 ]]
 	self.vanish_condition = Vanish.known and (Opt.vanish_solo or Player.group_size > 1)
-	self.ambush_condition = Player.energy.current >= 50 and (HiddenOpportunity.known or Player.combo_points.deficit >= (2 + (ImprovedAmbush.known and 1 or 0) + (Broadside:Up() and 1 or 0)))
+	self.ambush_condition = Player.energy.current >= 50 and (HiddenOpportunity.known or Player.combo_points.deficit >= (2 + (ImprovedAmbush.known and 1 or 0) + (RollTheBones.Broadside:Up() and 1 or 0)))
 	self.finish_condition = Player.combo_points.effective >= (Player.combo_points.max_spend - 1 - ((Player.stealthed and Crackshot.known) and 1 or 0))
 	self.blade_flurry_sync = Player.enemies < 2 or BladeFlurry:Remains() > Player.gcd
 
@@ -2895,22 +2905,22 @@ actions+=/variable,name=rtb_reroll,op=reset,if=!(raid_event.adds.remains>12|raid
 		self.rtb_reroll = false
 	elseif Opt.rtb_values.enabled then
 		self.rtb_value = (
-			(Broadside:Up() and Opt.rtb_values.broadside or 0) +
-			(TrueBearing:Up() and Opt.rtb_values.true_bearing or 0) +
-			(RuthlessPrecision:Up() and Opt.rtb_values.ruthless_precision or 0) +
-			(SkullAndCrossbones:Up() and Opt.rtb_values.skull_and_crossbones or 0) +
-			(BuriedTreasure:Up() and Opt.rtb_values.buried_treasure or 0) +
-			(GrandMelee:Up() and (
+			(RollTheBones.Broadside:Up() and Opt.rtb_values.broadside or 0) +
+			(RollTheBones.TrueBearing:Up() and Opt.rtb_values.true_bearing or 0) +
+			(RollTheBones.RuthlessPrecision:Up() and Opt.rtb_values.ruthless_precision or 0) +
+			(RollTheBones.SkullAndCrossbones:Up() and Opt.rtb_values.skull_and_crossbones or 0) +
+			(RollTheBones.BuriedTreasure:Up() and Opt.rtb_values.buried_treasure or 0) +
+			(RollTheBones.GrandMelee:Up() and (
 				Opt.rtb_values.grand_melee + (Player.enemies > 1 and Opt.rtb_values.grand_melee_aoe or 0)
 			) or 0)
 		)
 		self.rtb_reroll = self.rtb_value < (Opt.rtb_values.threshold + (LoadedDice:Up() and Opt.rtb_values.loaded_dice or 0))
 	elseif Crackshot.known then
-		self.rtb_reroll = self.rtb_will_lose <= 1 and ((HiddenOpportunity.known and not RollTheBones:WillLose(TrueBearing)) or (not HiddenOpportunity.known and not RollTheBones:WillLose(Broadside)))
+		self.rtb_reroll = self.rtb_will_lose <= 1 and ((HiddenOpportunity.known and not RollTheBones:WillLose(RollTheBones.TrueBearing)) or (not HiddenOpportunity.known and not RollTheBones:WillLose(RollTheBones.Broadside)))
 	elseif HiddenOpportunity.known then
-		self.rtb_reroll = not RollTheBones:WillLose(SkullAndCrossbones) and self.rtb_will_lose < (2 + ((Player.enemies < 2 and RollTheBones:WillLose(GrandMelee)) and 1 or 0))
+		self.rtb_reroll = not RollTheBones:WillLose(RollTheBones.SkullAndCrossbones) and self.rtb_will_lose < (2 + ((Player.enemies < 2 and RollTheBones:WillLose(RollTheBones.GrandMelee)) and 1 or 0))
 	else
-		self.rtb_reroll = self.rtb_will_lose == ((RollTheBones:WillLose(BuriedTreasure) and 1 or 0) + ((Player.enemies < 2 and RollTheBones:WillLose(GrandMelee)) and 1 or 0))
+		self.rtb_reroll = self.rtb_will_lose == ((RollTheBones:WillLose(RollTheBones.BuriedTreasure) and 1 or 0) + ((Player.enemies < 2 and RollTheBones:WillLose(RollTheBones.GrandMelee)) and 1 or 0))
 	end
 end
 
@@ -2940,7 +2950,7 @@ actions.stealth+=/ambush,if=talent.hidden_opportunity
 			return Dispatch
 		end
 	end
-	if Crackshot.known and PistolShot:Usable() and FanTheHammer.rank >= 2 and Opportunity:Stack() >= 6 and ((Broadside:Up() and Player.combo_points.current <= 1) or GreenskinsWickers:Up()) then
+	if Crackshot.known and PistolShot:Usable() and FanTheHammer.rank >= 2 and Opportunity:Stack() >= 6 and ((RollTheBones.Broadside:Up() and Player.combo_points.current <= 1) or GreenskinsWickers:Up()) then
 		return PistolShot
 	end
 	if HiddenOpportunity.known and Ambush:Usable() then
@@ -3019,7 +3029,7 @@ actions.cds+=/use_items,slots=trinket2,if=buff.between_the_eyes.up|trinket.2.has
 	end
 	if BladeFlurry:Usable() and (
 		(Player.enemies >= (2 - (UnderhandedUpperHand.known and 1 or 0)) and not Player.stealthed and BladeFlurry:Remains() < Player.gcd) or
-		(DeftManeuvers.known and not self.finish_condition and (Player.enemies >= 5 or (Player.enemies >= 3 and Player.combo_points.deficit == (Player.enemies + (Broadside:Up() and 1 or 0)))))
+		(DeftManeuvers.known and not self.finish_condition and (Player.enemies >= 5 or (Player.enemies >= 3 and Player.combo_points.deficit == (Player.enemies + (RollTheBones.Broadside:Up() and 1 or 0)))))
 	) then
 		return UseCooldown(BladeFlurry)
 	end
@@ -3126,7 +3136,7 @@ actions.build+=/sinister_strike
 			)) or
 			(not FanTheHammer.known and (
 				Player.energy.deficit > (Player.energy.regen * 1.5) or
-				Player.combo_points.deficit <= (1 + (Broadside:Up() and 1 or 0)) or
+				Player.combo_points.deficit <= (1 + (RollTheBones.Broadside:Up() and 1 or 0)) or
 				QuickDraw.known or
 				(Audacity.known and Audacity:Down())
 			))
@@ -3228,7 +3238,12 @@ actions.cds+=/shadow_blades,if=variable.maintenance&variable.shd_cp&buff.shadow_
 actions.cds+=/thistle_tea,if=buff.shadow_dance.remains>2&!buff.thistle_tea.up
 actions.cds+=/flagellation,if=combo_points>=5&cooldown.shadow_blades.remains<=3|fight_remains<=25
 ]]
-	if ColdBlood:Usable() and Player.combo_points.current >= 6 and ShadowDance:Up() and (not Flagellation.known or Flagellation.Persist:Up()) and (not SecretTechnique.known or (self.secret and SecretTechnique:Ready())) then
+	if ColdBlood:Usable() and Player.combo_points.current >= 6 and ShadowDance:Up() and (not SecretTechnique.known or (self.secret and SecretTechnique:Ready())) and (
+		not Flagellation.known or
+		Flagellation.Persist:Up() or
+		(Flagellation.Buff:Down() and not Flagellation:Ready(35)) or
+		(Target.boss and Target.timeToDie < (Flagellation:Cooldown() + 12) and (Flagellation.Buff:Down() or Target.timeToDie < (Flagellation.Buff:Remains() + 4)))
+	) then
 		return UseCooldown(ColdBlood)
 	end
 	if self.maintenance and SymbolsOfDeath:Usable() and SymbolsOfDeath:Remains() <= 3 and (
@@ -4097,7 +4112,7 @@ CombatEvent.SPELL = function(event, srcGUID, dstGUID, spellId, spellName, spellS
 	if dstGUID == Player.guid then
 		if event == 'SPELL_AURA_APPLIED' or event == 'SPELL_AURA_REFRESH' then
 			ability.last_gained = Player.time
-			if RollTheBones.known and RollTheBones.buffs[ability] then
+			if RollTheBones.known and RollTheBones.Buffs[ability] then
 				ability.trigger = RollTheBones.next_trigger
 			end
 		end
@@ -4728,30 +4743,30 @@ SlashCmdList[ADDON] = function(msg, editbox)
 			end
 			if startsWith(msg[2], 'br') then
 				Opt.rtb_values.broadside = clamp(tonumber(msg[3]) or 10, 0, 20)
-				return Status(Broadside.name .. ' value', Opt.rtb_values.broadside)
+				return Status(RollTheBones.Broadside.name .. ' value', Opt.rtb_values.broadside)
 			end
 			if startsWith(msg[2], 'tr') then
 				Opt.rtb_values.true_bearing = clamp(tonumber(msg[3]) or 11, 0, 20)
-				return Status(TrueBearing.name .. ' value', Opt.rtb_values.true_bearing)
+				return Status(RollTheBones.TrueBearing.name .. ' value', Opt.rtb_values.true_bearing)
 			end
 			if startsWith(msg[2], 'ru') then
 				Opt.rtb_values.ruthless_precision = clamp(tonumber(msg[3]) or 9, 0, 20)
-				return Status(RuthlessPrecision.name .. ' value', Opt.rtb_values.ruthless_precision)
+				return Status(RollTheBones.RuthlessPrecision.name .. ' value', Opt.rtb_values.ruthless_precision)
 			end
 			if startsWith(msg[2], 'sk') then
 				Opt.rtb_values.skull_and_crossbones = clamp(tonumber(msg[3]) or 8, 0, 20)
-				return Status(SkullAndCrossbones.name .. ' value', Opt.rtb_values.skull_and_crossbones)
+				return Status(RollTheBones.SkullAndCrossbones.name .. ' value', Opt.rtb_values.skull_and_crossbones)
 			end
 			if startsWith(msg[2], 'bu') then
 				Opt.rtb_values.buried_treasure = clamp(tonumber(msg[3]) or 4, 0, 20)
-				return Status(BuriedTreasure.name .. ' value', Opt.rtb_values.buried_treasure)
+				return Status(RollTheBones.BuriedTreasure.name .. ' value', Opt.rtb_values.buried_treasure)
 			end
 			if startsWith(msg[2], 'gr') then
 				Opt.rtb_values.grand_melee = clamp(tonumber(msg[3]) or 3, 0, 20)
 				if msg[4] then
 					Opt.rtb_values.grand_melee_aoe = clamp(tonumber(msg[4]) or 2, 0, 20)
 				end
-				return Status(GrandMelee.name .. ' value', Opt.rtb_values.grand_melee .. ' + ' .. Opt.rtb_values.grand_melee_aoe, '(aoe modifier)')
+				return Status(RollTheBones.GrandMelee.name .. ' value', Opt.rtb_values.grand_melee .. ' + ' .. Opt.rtb_values.grand_melee_aoe, '(aoe modifier)')
 			end
 		end
 		Status(RollTheBones.name .. ' value-based rerolls', Opt.rtb_values.enabled)
