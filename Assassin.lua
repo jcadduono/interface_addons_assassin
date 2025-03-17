@@ -1221,8 +1221,8 @@ Blindside.buff_duration = 10
 Blindside.max_stack = 1
 local CausticSpatter = Ability:Add(421975, false, true, 421976)
 CausticSpatter.buff_duration = 10
-CausticSpatter.damage = Ability:Add(421979, false, true)
-CausticSpatter.damage:AutoAoe()
+CausticSpatter.Splash = Ability:Add(421979, false, true)
+CausticSpatter.Splash:AutoAoe()
 local CrimsonTempest = Ability:Add(121411, false, true)
 CrimsonTempest.buff_duration = 4
 CrimsonTempest.energy_cost = 45
@@ -1491,6 +1491,7 @@ CoupDeGrace.Buff = Ability:Add(441786, true, true)
 CoupDeGrace.Buff.max_stack = 4
 local Fazed = Ability:Add(441224, false, true)
 Fazed.buff_duration = 10
+Fazed.learn_spellId = 441146
 Fazed:Track()
 local FlawlessForm = Ability:Add(441321, true, true, 441326)
 FlawlessForm.buff_duration = 12
@@ -1819,7 +1820,10 @@ function Player:UpdateKnown()
 	IndiscriminateCarnage.Fading.known = IndiscriminateCarnage.known
 	MasterAssassin.Fading.known = MasterAssassin.known
 	SerratedBoneSpike.DoT.known = SerratedBoneSpike.known
-	CausticSpatter.damage.known = CausticSpatter.known
+	CausticSpatter.Splash.known = CausticSpatter.known
+	Flagellation.Buff.known = Flagellation.known
+	Flagellation.Persist.known = Flagellation.known
+	CoupDeGrace.Buff.known = CoupDeGrace.known
 
 	self.combo_points.max_spend = 5 + (DeeperStratagem.known and 1 or 0) + (DeviousStratagem.known and 1 or 0) + (SecretStratagem.known and 1 or 0) + (SanguineStratagem.known and 1 or 0)
 
