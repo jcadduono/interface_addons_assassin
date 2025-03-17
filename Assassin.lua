@@ -3239,10 +3239,10 @@ actions+=/call_action_list,name=build
 actions+=/call_action_list,name=fill,if=!variable.stealth
 ]]
 	self.priority_rotation = Opt.priority_rotation and Player.enemies >= 2
-	self.skip_rupture = not Rupture.known or ShadowDance:Up() or SliceAndDice:Down() or DarkestNight:Up() or (Player.enemies >= 8 and not ReplicatingShadows.known and UnseenBlade.known)
+	self.skip_rupture = not Rupture.known or ShadowDance:Up() or SliceAndDice:Down() or (DarkestNight.known and DarkestNight:Up()) or (Player.enemies >= 8 and not ReplicatingShadows.known and UnseenBlade.known)
 	self.maintenance = (Rupture:Ticking() > 0 or self.skip_rupture) and SliceAndDice:Up()
 	self.secret = SecretTechnique.known and (ShadowDance:Up() or (Flagellation.known and DeathPerception.known and between(Flagellation:Cooldown(), 20, 40)))
-	self.shd_cp = Player.combo_points.current <= 1 or (DarkestNight:Up() and Player.combo_points.current >= 7) or (UnseenBlade.known and Player.combo_points.effective >= 6)
+	self.shd_cp = Player.combo_points.current <= 1 or (DarkestNight.known and Player.combo_points.current >= 7 and DarkestNight:Up()) or (UnseenBlade.known and Player.combo_points.effective >= 6)
 	if Racial.Shadowmeld.known and Stealth:Usable() and Racial.Shadowmeld:Up() then
 		return Stealth
 	end
@@ -3254,8 +3254,8 @@ actions+=/call_action_list,name=fill,if=!variable.stealth
 		if apl then return apl end
 	end
 	if (
-		(Player.combo_points.effective >= 6 and DarkestNight:Down()) or
-		(Player.combo_points.current >= Player.combo_points.max_spend and DarkestNight:Up())
+		(not DarkestNight.known and Player.combo_points.effective >= 6) or
+		(DarkestNight.known and (Player.combo_points.current >= Player.combo_points.max_spend or (Player.combo_points.effective >= 6 and DarkestNight:Down())))
 	) then
 		apl = self:finish()
 		if apl then return apl end
@@ -3368,6 +3368,7 @@ actions.finish+=/rupture,if=talent.unseen_blade&cooldown.flagellation.remains<10
 actions.finish+=/coup_de_grace,if=debuff.fazed.up
 actions.finish+=/black_powder,if=!variable.priority_rotation&variable.maintenance&((variable.targets>=2&talent.deathstalkers_mark&(!buff.darkest_night.up|buff.shadow_dance.up&variable.targets>=5))|talent.unseen_blade&variable.targets>=7)
 actions.finish+=/eviscerate
+actions.finish+=/coup_de_grace
 ]]
 	if self.secret and SecretTechnique:Usable(0, true) then
 		return Pool(SecretTechnique)
@@ -3390,6 +3391,9 @@ actions.finish+=/eviscerate
 	end
 	if Eviscerate:Usable(0, true) then
 		return Pool(Eviscerate)
+	end
+	if CoupDeGrace:Usable(0, true) then
+		return Pool(CoupDeGrace)
 	end
 end
 
