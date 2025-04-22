@@ -2118,7 +2118,19 @@ function Ambush:EnergyCost()
 	if Blindside.known and Blindside:Up() then
 		return 0
 	end
-	return Ability.EnergyCost(self)
+	local cost = Ability.EnergyCost(self)
+	if ViciousVenoms.known then
+		cost = cost + (5 * ViciousVenoms.rank)
+	end
+	return cost
+end
+
+function Mutilate:EnergyCost()
+	local cost = Ability.EnergyCost(self)
+	if ViciousVenoms.known then
+		cost = cost + (5 * ViciousVenoms.rank)
+	end
+	return cost
 end
 
 function Shadowstrike:Available()
@@ -2729,7 +2741,7 @@ actions.items+=/use_item,name=imperfect_ascendancy_serum,use_off_gcd=1,if=variab
 actions.items+=/use_items,slots=trinket1,if=(variable.trinket_sync_slot=1&(debuff.deathmark.up|fight_remains<=20)|(variable.trinket_sync_slot=2&(!trinket.2.cooldown.ready&dot.kingsbane.ticking|!debuff.deathmark.up&cooldown.deathmark.remains>20&dot.kingsbane.ticking))|!variable.trinket_sync_slot)
 actions.items+=/use_items,slots=trinket2,if=(variable.trinket_sync_slot=2&(debuff.deathmark.up|fight_remains<=20)|(variable.trinket_sync_slot=1&(!trinket.1.cooldown.ready&dot.kingsbane.ticking|!debuff.deathmark.up&cooldown.deathmark.remains>20&dot.kingsbane.ticking))|!variable.trinket_sync_slot)
 ]]
-	self.base_trinket_condition = (
+	self.base_trinket_condition = Opt.trinket and (
 		Deathmark:Ticking() > 0 or
 		(Rupture:Ticking() > 0 and Deathmark:Ready(2)) or
 		(Target.boss and Target.timeToDie <= 22)
