@@ -4212,7 +4212,7 @@ end
 
 function Events:UNIT_MAXPOWER(unitId)
 	if unitId == 'player' then
-		Player.level = UnitLevel(unitId)
+		Player.level = UnitEffectiveLevel(unitId)
 		Player.energy.max = UnitPowerMax(unitId, 3)
 		Player.combo_points.max = UnitPowerMax(unitId, 4)
 	end
