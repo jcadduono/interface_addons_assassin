@@ -1489,8 +1489,16 @@ MomentumOfDespair.buff_duration = 12
 local LingeringDarkness = Ability:Add(457056, true, true, 457273)
 LingeringDarkness.buff_duration = 30
 ---- Fatebound
+local InevitabileEnd = Ability:Add(454434, true, true)
+InevitabileEnd.ColdBlood = Ability:Add(456330, true, true)
+InevitabileEnd.ColdBlood.buff_duration = 15
+InevitabileEnd.ColdBlood.cooldown_duration = 45
+InevitabileEnd.ColdBlood.max_stack = 2
+InevitabileEnd.ColdBlood.triggers_gcd = false
+InevitabileEnd.ColdBlood.off_gcd = true
 local HandOfFate = Ability:Add(452536, true, true)
 local LuckyCoin = Ability:Add(452562, true, true)
+LuckyCoin.Damage = Ability:Add(461818, false, true)
 local FateboundCoin = Ability:Add(452542, false, true)
 FateboundCoin.Heads = Ability:Add(452923, true, true)
 FateboundCoin.Heads.buff_duration = 15
@@ -1498,6 +1506,7 @@ FateboundCoin.Heads.max_stack = 99
 FateboundCoin.Tails = Ability:Add(452917, true, true)
 FateboundCoin.Tails.buff_duration = 15
 FateboundCoin.Tails.max_stack = 99
+local FatefulEnding = Ability:Add(454428, true, true)
 ---- Trickster
 local CoupDeGrace = Ability:Add(441776, false, true)
 CoupDeGrace.energy_cost = 35
@@ -1988,6 +1997,14 @@ function Player:UpdateKnown()
 	Flagellation.Buff.known = Flagellation.known
 	Flagellation.Persist.known = Flagellation.known
 	CoupDeGrace.Buff.known = CoupDeGrace.known
+	if FatefulEnding.known then
+		LuckyCoin.known = true
+		LuckyCoin.Damage.known = true
+	end
+	if InevitabileEnd.known then
+		InevitabileEnd.ColdBlood.known = ColdBlood.known
+		ColdBlood.known = false
+	end
 
 	self.combo_points.max_spend = 5 + (DeeperStratagem.known and 1 or 0) + (DeviousStratagem.known and 1 or 0) + (SecretStratagem.known and 1 or 0) + (SanguineStratagem.known and 1 or 0)
 
@@ -2819,11 +2836,14 @@ actions.cds+=/cold_blood,use_off_gcd=1,if=(buff.fatebound_coin_tails.stack>0&buf
 		apl = self:vanish()
 		if apl then return apl end
 	end
-	if ColdBlood:Usable() and (
-		(Fatebound.known and FateboundCoinTails:Up() and FateboundCoinHeads:Up()) or
-		(Shiv:Up() and (not Deathmark:Ready(50) or (InevitableEnds.known and Player.combo_points.effective >= self.effective_spend_cp)))
-	) then
+	if ColdBlood:Usable() and (Shiv:Up() and (DeathMark:Up() or not Deathmark:Ready(50))) then
 		UseCooldown(ColdBlood)
+	end
+	if InevitabileEnd.ColdBlood:Usable() and (
+		(HandOfFate.known and FateboundCoin.Tails:Up() and FateboundCoin.Heads:Up()) or
+		(Shiv:Up() and (not Deathmark:Ready(50) or Player.combo_points.effective >= self.effective_spend_cp))
+	) then
+		UseCooldown(InevitabileEnd.ColdBlood)
 	end
 end
 
@@ -2964,6 +2984,7 @@ actions.stealthed+=/garrote,if=stealthed.improved_garrote&(pmultiplier<=1|refres
 		(MasterAssassin:Up(true) and self.single_target)
 	) and (
 		(ColdBlood.known and ColdBlood:Up()) or
+		(InevitabileEnd.ColdBlood.known and InevitabileEnd.ColdBlood:Up()) or
 		(DeathstalkersMark.known and (
 			(DarkestNight:Down() and DeathstalkersMark:Up()) or
 			(DarkestNight:Up() and Player.combo_points.effective >= Player.combo_points.max_spend)
@@ -2995,7 +3016,7 @@ actions.vanish+=/vanish,if=talent.improved_garrote&cooldown.garrote.up&(dot.garr
 	if not Vanish:Usable() then
 		return
 	end
-	if LuckyCoin.known and LuckyCoin:Down() and Player.combo_points.effective >= self.effective_spend_cp and (FateboundCoin.Tails:Stack() >= 5 or FateboundCoin.Heads:Stack() >= 5) then
+	if HandOfFate.known and (not FatefulEnding.known or LuckyCoin:Down()) and Player.combo_points.effective >= self.effective_spend_cp and (FateboundCoin.Tails:Stack() >= 5 or FateboundCoin.Heads:Stack() >= 5) then
 		return UseCooldown(Pool(Vanish, 45))
 	end
 	if not MasterAssassin.known and not IndiscriminateCarnage.known and ImprovedGarrote.known and Garrote:Ready() and (Garrote:Multiplier() <= 1 or Garrote:Refreshable()) and (Deathmark:Up() or Deathmark:Ready(4)) and Player.combo_points.deficit >= min(4, Player.enemies) then
